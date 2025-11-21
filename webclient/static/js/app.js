@@ -532,14 +532,18 @@ const SLOT_SYMBOLS = ["A", "B", "C", "D", "7"];
   const dealButton = container.querySelector("#dealButton");
   const playerHandEl = container.querySelector("#playerHand");
   const bankerHandEl = container.querySelector("#bankerHand");
-    const logList = container.querySelector("#logList");
-    const summaryEl = container.querySelector("#baccaratSummary");
-    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const setting = session.settings || defaultSetting;
-    const riskMode =
-      setting.risk_enabled && session.bet_amount <= setting.risk_threshold;
-    const forcedOutcome = riskMode ? pickRiggedOutcome() : null;
-    const riggedDeck = riskMode && forcedOutcome ? generateRiggedDeck(forcedOutcome) : null;
+  const logList = container.querySelector("#logList");
+  const summaryEl = container.querySelector("#baccaratSummary");
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const setting = session.settings || defaultSetting;
+  const casinoProb = Math.max(
+    0,
+    Math.min(1, (setting.casino_advantage_percent || 0) / 100)
+  );
+  const playerProb = Math.max(
+    0,
+    Math.min(1, (setting.player_advantage_percent || 0) / 100)
+  );
 
     function appendLog(message) {
       const item = document.createElement("li");
@@ -570,6 +574,33 @@ const SLOT_SYMBOLS = ["A", "B", "C", "D", "7"];
     }
 
     async function playRound() {
+      const betChoice = container.querySelector(
+        'input[name="betChoice"]:checked'
+      ).value;
+
+      const casinoActive =
+        setting.risk_enabled &&
+        session.bet_amount >= setting.risk_threshold &&
+        Math.random() < casinoProb;
+      const playerActive =
+        setting.assist_enabled &&
+        session.bet_amount <= setting.assist_max_bet &&
+        Math.random() < playerProb;
+
+      let targetOutcome = null;
+      if (casinoActive) {
+        if (betChoice === "player") targetOutcome = "banker";
+        else if (betChoice === "banker") targetOutcome = "player";
+        else targetOutcome = "banker";
+      } else if (playerActive) {
+        targetOutcome = betChoice;
+      }
+
+      let riggedDeck = null;
+      if (targetOutcome) {
+        riggedDeck = generateRiggedDeck(targetOutcome);
+      }
+
       const deck = riggedDeck ? [...riggedDeck] : createDeck(2);
       const playerHand = [];
       const bankerHand = [];
