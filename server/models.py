@@ -29,3 +29,12 @@ class GameResult(Base):
     payout_amount = Column(Float, nullable=False)
     detail = Column(String, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class FinancialAdjustment(Base):
+    __tablename__ = "financial_adjustments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    amount = Column(Float, nullable=False)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

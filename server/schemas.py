@@ -68,3 +68,19 @@ class ResultListItem(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class AdjustmentCreate(BaseModel):
+    amount: float
+    description: Optional[str] = None
+
+
+class AdjustmentResponse(BaseModel):
+    id: int
+    amount: float
+    description: Optional[str]
+    created_at: datetime
+    total_profit: float
+
+    class Config:
+        orm_mode = True

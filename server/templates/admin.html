@@ -129,7 +129,7 @@
                     <th>베팅</th>
                     <th>결과</th>
                     <th>배당</th>
-                    <th>시간 (KST)</th>
+                    <th>획득 포인트</th>
                   </tr>
                 </thead>
                 <tbody id="resultTableBody">
@@ -140,11 +140,190 @@
                     <td>{{ row.bet_choice or "-" }}</td>
                     <td>{{ row.result }}</td>
                     <td>x{{ "%.2f"|format(row.payout_multiplier) }}</td>
-                    <td>{{ row.timestamp_kst }}</td>
+                    <td>{{ "%.2f"|format(row.payout_amount) }}</td>
                   </tr>
                   {% endfor %}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card shadow-sm mt-4">
+        <div
+          class="card-header d-flex justify-content-between align-items-center"
+        >
+          <h5 class="card-title mb-0">게임별 카지노 지표</h5>
+          <span class="text-muted small">집계 기준: 전체 기록</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>게임</th>
+                <th>총 판수</th>
+                <th>플레이어 승률</th>
+                <th>카지노 승률</th>
+                <th>누적 이익</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if game_stats %}
+              {% for stat in game_stats %}
+              <tr>
+                <td>{{ stat.game_name }}</td>
+                <td>{{ stat.total }}</td>
+                <td>{{ "%.1f"|format(stat.player_win_rate) }}%</td>
+                <td>{{ "%.1f"|format(stat.casino_win_rate) }}%</td>
+                <td class="{{ 'text-success' if stat.profit >=0 else 'text-danger' }}">
+                  {{ "%.2f"|format(stat.profit) }}
+                </td>
+              </tr>
+              {% endfor %}
+              {% else %}
+              <tr>
+                <td colspan="5" class="text-center text-muted py-4">
+                  아직 통계가 없습니다.
+                </td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card shadow-sm mt-4">
+        <div class="card-body">
+          <div class="row g-4 align-items-start">
+            <div class="col-lg-4">
+              <h6 class="text-muted">총 누적 이익</h6>
+              <p class="display-6 fw-semibold {{ 'text-success' if total_profit >= 0 else 'text-danger' }}">
+                {{ "%.2f"|format(total_profit) }} pts
+              </p>
+              <ul class="list-unstyled text-muted small mb-0">
+                <li>게임 이익: {{ "%.2f"|format(game_profit_total) }} pts</li>
+                <li>수동 조정 합계: {{ "%.2f"|format(adjustment_total) }} pts</li>
+              </ul>
+            </div>
+            <div class="col-lg-8">
+              <h6 class="mb-3">오프라인 조정</h6>
+              <form id="adjustmentForm" class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label" for="adjustmentAmount">조정 포인트</label>
+                  <input
+                    type="number"
+                    class="form-control"
+                    id="adjustmentAmount"
+                    step="0.01"
+                    placeholder="예: 150 또는 -50"
+                    required
+                  />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="adjustmentNote">메모</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="adjustmentNote"
+                    placeholder="오프라인 기록 설명"
+                  />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label text-white">.</label>
+                  <button type="submit" class="btn btn-primary w-100">
+                    기록
+                  </button>
+                </div>
+              </form>
+              <div
+                id="adjustmentFeedback"
+                class="alert alert-success d-none mt-3"
+                role="alert"
+              ></div>
+            </div>
+          </div>
+        </div>
+        <div class="table-responsive border-top">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>시간 (KST)</th>
+                <th>포인트</th>
+                <th>메모</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if adjustments %}
+              {% for adj in adjustments %}
+              <tr>
+                <td>{{ adj.created_kst }}</td>
+                <td class="{{ 'text-success' if adj.amount >=0 else 'text-danger' }}">
+                  {{ "%.2f"|format(adj.amount) }}
+                </td>
+                <td>{{ adj.description or "-" }}</td>
+                <td>
+                  <button
+                    class="btn btn-sm btn-outline-danger adjustment-delete"
+                    data-adjustment-id="{{ adj.id }}"
+                  >
+                    삭제
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+              {% else %}
+              <tr>
+                <td colspan="4" class="text-center text-muted py-3">
+                  등록된 조정 내역이 없습니다.
+                </td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card shadow-sm mt-4">
+        <div class="card-body">
+          <div class="row g-4">
+            <div class="col-md-6">
+              <h6 class="mb-3">세션 삭제</h6>
+              <form id="deleteSessionForm" class="row g-3">
+                <div class="col-8">
+                  <label class="form-label" for="deleteSessionKey"
+                    >세션 키</label
+                  >
+                  <input
+                    type="text"
+                    id="deleteSessionKey"
+                    class="form-control"
+                    placeholder="예: a1b2c3d4"
+                    required
+                  />
+                </div>
+                <div class="col-4">
+                  <label class="form-label text-white">.</label>
+                  <button type="submit" class="btn btn-danger w-100">
+                    삭제
+                  </button>
+                </div>
+              </form>
+            </div>
+            <div class="col-md-6 border-start">
+              <h6>전체 데이터 초기화</h6>
+              <p class="text-muted small mb-2">
+                세션/결과 기록을 모두 삭제합니다. (조정 내역은 유지)
+              </p>
+              <button id="resetDatabase" class="btn btn-outline-danger">
+                전체 삭제
+              </button>
+              <div
+                id="deleteFeedback"
+                class="alert alert-info d-none mt-3"
+                role="alert"
+              ></div>
             </div>
           </div>
         </div>

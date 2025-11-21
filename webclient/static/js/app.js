@@ -526,7 +526,7 @@
           renderHand(playerHandEl, playerHand, playerVisible, "PLAYER");
           appendLog(`Player 3번째 카드: ${playerThirdCard.suit}${playerThirdCard.rank}`);
         } else {
-          appendLog("Player는 서있습니다.");
+          appendLog("Player는 추가 카드를 받지 않습니다.");
         }
 
         const playerThirdValue =
@@ -544,7 +544,7 @@
           bankerValue = handValue(bankerHand);
           renderHand(bankerHandEl, bankerHand, bankerVisible, "BANKER");
         } else {
-          appendLog("Banker는 서있습니다.");
+          appendLog("Banker는 추가 카드를 받지 않습니다.");
         }
       }
 
