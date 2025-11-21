@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 GameID = Literal["updown", "slot", "baccarat"]
@@ -17,8 +17,7 @@ class SessionResponse(BaseModel):
     game_id: GameID
     bet_amount: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class VerifyKeyRequest(BaseModel):
@@ -52,8 +51,7 @@ class SessionListItem(BaseModel):
     created_at: datetime
     used: bool
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ResultListItem(BaseModel):
@@ -66,8 +64,7 @@ class ResultListItem(BaseModel):
     payout_amount: float
     timestamp: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AdjustmentCreate(BaseModel):
@@ -82,5 +79,20 @@ class AdjustmentResponse(BaseModel):
     created_at: datetime
     total_profit: float
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GameSettingItem(BaseModel):
+    game_id: GameID
+    risk_enabled: bool
+    risk_threshold: int
+    casino_advantage_percent: float
+    assist_enabled: bool
+    assist_max_bet: int
+    player_advantage_percent: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GameSettingsUpdate(BaseModel):
+    settings: List[GameSettingItem]

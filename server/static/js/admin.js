@@ -9,6 +9,8 @@ const adjustmentFeedback = document.getElementById("adjustmentFeedback");
 const deleteSessionForm = document.getElementById("deleteSessionForm");
 const deleteFeedback = document.getElementById("deleteFeedback");
 const resetDatabaseBtn = document.getElementById("resetDatabase");
+const saveGameSettingsBtn = document.getElementById("saveGameSettings");
+const gameSettingsFeedback = document.getElementById("gameSettingsFeedback");
 
 const formatBetChoice = (value) =>
   value === null || typeof value === "undefined" ? "-" : value;
@@ -42,6 +44,18 @@ const showAdjustmentFeedback = (message, variant = "success") => {
   adjustmentFeedback.classList.remove("d-none", "alert-success", "alert-danger");
   adjustmentFeedback.classList.add(`alert-${variant}`);
   adjustmentFeedback.textContent = message;
+};
+
+const showGameSettingsFeedback = (message, variant = "info") => {
+  if (!gameSettingsFeedback) return;
+  gameSettingsFeedback.classList.remove(
+    "d-none",
+    "alert-success",
+    "alert-danger",
+    "alert-info"
+  );
+  gameSettingsFeedback.classList.add(`alert-${variant}`);
+  gameSettingsFeedback.textContent = message;
 };
 
 const showDeleteFeedback = (message, variant = "info") => {
@@ -145,6 +159,76 @@ refreshResultsBtn.addEventListener("click", () =>
 
 fetchSessions().catch((error) => console.error(error));
 fetchResults().catch((error) => console.error(error));
+
+const collectGameSettings = () => {
+  const toggles = document.querySelectorAll(".game-setting-toggle");
+  const assistToggles = document.querySelectorAll(
+    ".game-setting-assist-toggle"
+  );
+  const thresholds = document.querySelectorAll(".game-setting-threshold");
+  const advantages = document.querySelectorAll(".game-setting-advantage");
+  const assistThresholds = document.querySelectorAll(
+    ".game-setting-assist-threshold"
+  );
+  const assistAdvantages = document.querySelectorAll(
+    ".game-setting-assist-advantage"
+  );
+
+  const map = {};
+  toggles.forEach((el) => {
+    map[el.dataset.gameId] = {
+      game_id: el.dataset.gameId,
+      risk_enabled: el.checked,
+      risk_threshold: 50,
+      casino_advantage_percent: 0,
+      assist_enabled: false,
+      assist_max_bet: 50,
+      player_advantage_percent: 0,
+    };
+  });
+  assistToggles.forEach((el) => {
+    if (!map[el.dataset.gameId]) return;
+    map[el.dataset.gameId].assist_enabled = el.checked;
+  });
+  thresholds.forEach((el) => {
+    if (!map[el.dataset.gameId]) return;
+    map[el.dataset.gameId].risk_threshold = Number(el.value);
+  });
+  advantages.forEach((el) => {
+    if (!map[el.dataset.gameId]) return;
+    map[el.dataset.gameId].casino_advantage_percent = Number(el.value);
+  });
+  assistThresholds.forEach((el) => {
+    if (!map[el.dataset.gameId]) return;
+    map[el.dataset.gameId].assist_max_bet = Number(el.value);
+  });
+  assistAdvantages.forEach((el) => {
+    if (!map[el.dataset.gameId]) return;
+    map[el.dataset.gameId].player_advantage_percent = Number(el.value);
+  });
+  return Object.values(map);
+};
+
+if (saveGameSettingsBtn) {
+  saveGameSettingsBtn.addEventListener("click", async () => {
+    try {
+      const settings = collectGameSettings();
+      const res = await fetch("/game_settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings }),
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || "설정 저장에 실패했습니다.");
+      }
+      showGameSettingsFeedback("저장되었습니다.", "success");
+    } catch (error) {
+      console.error(error);
+      showGameSettingsFeedback(error.message, "danger");
+    }
+  });
+}
 
 if (adjustmentForm) {
   adjustmentForm.addEventListener("submit", async (event) => {

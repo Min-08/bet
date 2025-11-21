@@ -1,5 +1,5 @@
 import uuid
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -7,11 +7,11 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from . import models, schemas
-from .database import Base, engine, get_db
+from .database import Base, SessionLocal, engine, get_db
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -42,6 +42,77 @@ def get_profit_totals(db: Session) -> Tuple[float, float, float]:
     adjustment_total = float(adjustment_total)
     return game_total, adjustment_total, game_total + adjustment_total
 
+
+def ensure_game_settings_columns() -> None:
+    with engine.begin() as conn:
+        existing_cols = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info('game_settings')").fetchall()
+        }
+        migrations = []
+        if "assist_enabled" not in existing_cols:
+            migrations.append(
+                "ALTER TABLE game_settings ADD COLUMN assist_enabled BOOLEAN NOT NULL DEFAULT 0"
+            )
+        if "assist_max_bet" not in existing_cols:
+            migrations.append(
+                "ALTER TABLE game_settings ADD COLUMN assist_max_bet INTEGER NOT NULL DEFAULT 50"
+            )
+        if "player_advantage_percent" not in existing_cols:
+            migrations.append(
+                "ALTER TABLE game_settings ADD COLUMN player_advantage_percent FLOAT NOT NULL DEFAULT 0.0"
+            )
+        for sql in migrations:
+            conn.exec_driver_sql(sql)
+
+
+def ensure_default_game_settings(db: Session) -> None:
+    defaults = {
+        "updown": {
+            "risk_enabled": True,
+            "risk_threshold": 1000,
+            "casino_advantage_percent": 15.0,
+            "assist_enabled": False,
+            "assist_max_bet": 50,
+            "player_advantage_percent": 0.0,
+        },
+        "slot": {
+            "risk_enabled": True,
+            "risk_threshold": 1000,
+            "casino_advantage_percent": 15.0,
+            "assist_enabled": False,
+            "assist_max_bet": 50,
+            "player_advantage_percent": 0.0,
+        },
+        "baccarat": {
+            "risk_enabled": True,
+            "risk_threshold": 1000,
+            "casino_advantage_percent": 20.0,
+            "assist_enabled": False,
+            "assist_max_bet": 50,
+            "player_advantage_percent": 0.0,
+        },
+    }
+    for game_id, cfg in defaults.items():
+        existing = (
+            db.query(models.GameSetting)
+            .filter(models.GameSetting.game_id == game_id)
+            .first()
+        )
+        if existing:
+            continue
+        setting = models.GameSetting(
+            game_id=game_id,
+            risk_enabled=cfg["risk_enabled"],
+            risk_threshold=cfg["risk_threshold"],
+            casino_advantage_percent=cfg["casino_advantage_percent"],
+            assist_enabled=cfg["assist_enabled"],
+            assist_max_bet=cfg["assist_max_bet"],
+            player_advantage_percent=cfg["player_advantage_percent"],
+        )
+        db.add(setting)
+    db.commit()
+
 app = FastAPI(
     title="Virtual Probability Simulation",
     description="Educational betting simulation used for classroom exercises.",
@@ -64,6 +135,12 @@ app.mount(
 @app.on_event("startup")
 def startup() -> None:
     Base.metadata.create_all(bind=engine)
+    ensure_game_settings_columns()
+    db = SessionLocal()
+    try:
+        ensure_default_game_settings(db)
+    finally:
+        db.close()
 
 
 @app.get("/", include_in_schema=False)
@@ -140,6 +217,12 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     for adjustment in adjustments:
         adjustment.created_kst = _format_kst(adjustment.created_at)
 
+    game_settings = (
+        db.query(models.GameSetting)
+        .order_by(models.GameSetting.game_id.asc())
+        .all()
+    )
+
     game_profit_total, adjustment_total, total_profit = get_profit_totals(db)
 
     return templates.TemplateResponse(
@@ -153,6 +236,8 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "game_profit_total": game_profit_total,
             "adjustment_total": adjustment_total,
             "total_profit": total_profit,
+            "game_settings": game_settings,
+            "game_labels": GAME_LABELS,
         },
     )
 
@@ -370,3 +455,37 @@ def reset_database(db: Session = Depends(get_db)):
         "deleted_sessions": deleted_sessions,
         "deleted_results": deleted_results,
     }
+
+
+@app.get("/game_settings", response_model=List[schemas.GameSettingItem])
+def get_game_settings(db: Session = Depends(get_db)):
+    settings = (
+        db.query(models.GameSetting).order_by(models.GameSetting.game_id.asc()).all()
+    )
+    return settings
+
+
+@app.post("/game_settings", response_model=List[schemas.GameSettingItem])
+def update_game_settings(
+    payload: schemas.GameSettingsUpdate, db: Session = Depends(get_db)
+):
+    updated_items: List[models.GameSetting] = []
+    for item in payload.settings:
+        setting = (
+            db.query(models.GameSetting)
+            .filter(models.GameSetting.game_id == item.game_id)
+            .first()
+        )
+        if setting is None:
+            setting = models.GameSetting(game_id=item.game_id)
+            db.add(setting)
+        setting.risk_enabled = item.risk_enabled
+        setting.risk_threshold = item.risk_threshold
+        setting.casino_advantage_percent = item.casino_advantage_percent
+        setting.assist_enabled = item.assist_enabled
+        setting.assist_max_bet = item.assist_max_bet
+        setting.player_advantage_percent = item.player_advantage_percent
+        setting.updated_at = datetime.utcnow()
+        updated_items.append(setting)
+    db.commit()
+    return updated_items

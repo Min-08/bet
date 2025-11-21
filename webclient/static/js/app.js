@@ -1,5 +1,30 @@
 (function () {
-  const jsonHeaders = { "Content-Type": "application/json" };
+const jsonHeaders = { "Content-Type": "application/json" };
+
+let gameSettingsCache = {};
+const defaultSetting = {
+  risk_enabled: false,
+  risk_threshold: 50,
+  casino_advantage_percent: 0,
+  assist_enabled: false,
+  assist_max_bet: 50,
+  player_advantage_percent: 0,
+};
+
+const loadGameSettings = async () => {
+  try {
+    const res = await fetch("/game_settings");
+    if (!res.ok) return;
+    const data = await res.json();
+    gameSettingsCache = data.reduce((acc, item) => {
+      acc[item.game_id] = item;
+      return acc;
+    }, {});
+  } catch (error) {
+    console.warn("게임 설정을 불러오지 못했습니다.", error);
+  }
+};
+const settingsPromise = loadGameSettings();
 
   async function verifySessionKey(sessionKey) {
     const res = await fetch("/verify_key", {
@@ -29,8 +54,21 @@
 
   function renderUpDownGame(container, session, onComplete) {
     const betAmount = session.bet_amount;
+    const setting = session.settings || defaultSetting;
+    const riskActive =
+      setting.risk_enabled && betAmount >= setting.risk_threshold;
+    const playerActive =
+      setting.assist_enabled && betAmount <= setting.assist_max_bet;
+    const casinoProb = Math.max(
+      0,
+      Math.min(1, (setting.casino_advantage_percent || 0) / 100)
+    );
+    const playerProb = Math.max(
+      0,
+      Math.min(1, (setting.player_advantage_percent || 0) / 100)
+    );
     container.innerHTML = "";
-    const target = Math.floor(Math.random() * 100) + 1;
+    let target = Math.floor(Math.random() * 100) + 1;
     let attempts = 0;
     let lowerBound = 1;
     let upperBound = 100;
@@ -112,6 +150,25 @@
         MAX_ATTEMPTS - attempts
       }`;
 
+      // 보정: 카지노/유저 우세 각각 정답을 불리/유리 방향으로 이동
+      if (riskActive && value !== target && Math.random() < casinoProb) {
+        if (value < target) {
+          const shift = Math.max(1, Math.floor((upperBound - value) / 3));
+          target = Math.min(upperBound, target + shift);
+        } else {
+          const shift = Math.max(1, Math.floor((value - lowerBound) / 3));
+          target = Math.max(lowerBound, target - shift);
+        }
+      } else if (playerActive && value !== target && Math.random() < playerProb) {
+        if (value < target) {
+          const shift = Math.max(1, Math.floor((target - value) / 3));
+          target = Math.max(value + 1, target - shift);
+        } else {
+          const shift = Math.max(1, Math.floor((value - target) / 3));
+          target = Math.min(value - 1, target + shift);
+        }
+      }
+
       if (value === target) {
         feedback.innerHTML =
           '<div class="alert alert-success">정답입니다! 🎉</div>';
@@ -140,7 +197,7 @@
     container.appendChild(summaryBox);
   }
 
-  const SLOT_SYMBOLS = ["A", "B", "C", "D", "7"];
+const SLOT_SYMBOLS = ["A", "B", "C", "D", "7"];
 
   function getRandomSymbol() {
     return SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)];
@@ -156,6 +213,19 @@
 
   function renderSlotGame(container, session, onComplete) {
     const betAmount = session.bet_amount;
+    const setting = session.settings || defaultSetting;
+    const riskActive =
+      setting.risk_enabled && betAmount >= setting.risk_threshold;
+    const playerActive =
+      setting.assist_enabled && betAmount <= setting.assist_max_bet;
+    const casinoProb = Math.max(
+      0,
+      Math.min(1, (setting.casino_advantage_percent || 0) / 100)
+    );
+    const playerProb = Math.max(
+      0,
+      Math.min(1, (setting.player_advantage_percent || 0) / 100)
+    );
     container.innerHTML = "";
     let spinning = false;
     let intervalId = null;
@@ -191,7 +261,34 @@
       const symbols = Array.from(reelWrapper.children).map(
         (node) => node.textContent
       );
-      const multiplier = calculateSlotMultiplier(symbols);
+      let multiplier = calculateSlotMultiplier(symbols);
+      if (riskActive && multiplier > 0 && Math.random() < casinoProb) {
+        // 카지노 우세: 당첨이면 꽝이 될 때까지 재굴림 시도
+        let attempts = 0;
+        while (attempts < 30 && multiplier > 0) {
+          Array.from(reelWrapper.children).forEach((node) => {
+            node.textContent = getRandomSymbol();
+          });
+          const reroll = Array.from(reelWrapper.children).map(
+            (node) => node.textContent
+          );
+          multiplier = calculateSlotMultiplier(reroll);
+          attempts += 1;
+        }
+      } else if (playerActive && multiplier === 0 && Math.random() < playerProb) {
+        // 유저 우세: 꽝이면 당첨이 될 때까지 재굴림 시도
+        let attempts = 0;
+        while (attempts < 30 && multiplier === 0) {
+          Array.from(reelWrapper.children).forEach((node) => {
+            node.textContent = getRandomSymbol();
+          });
+          const reroll = Array.from(reelWrapper.children).map(
+            (node) => node.textContent
+          );
+          multiplier = calculateSlotMultiplier(reroll);
+          attempts += 1;
+        }
+      }
       const payoutAmount = betAmount * multiplier;
       resultBox.className = `alert mt-4 ${
         multiplier > 0 ? "alert-success" : "alert-warning"
@@ -386,10 +483,10 @@
   function pickRiggedOutcome() {
     const roll = Math.random();
     if (roll < 0.7) {
-      return "banker";
+      return "player";
     }
     if (roll < 0.95) {
-      return "player";
+      return "banker";
     }
     return "tie";
   }
@@ -432,13 +529,15 @@
       <div id="baccaratSummary"></div>
     `;
 
-    const dealButton = container.querySelector("#dealButton");
-    const playerHandEl = container.querySelector("#playerHand");
-    const bankerHandEl = container.querySelector("#bankerHand");
+  const dealButton = container.querySelector("#dealButton");
+  const playerHandEl = container.querySelector("#playerHand");
+  const bankerHandEl = container.querySelector("#bankerHand");
     const logList = container.querySelector("#logList");
     const summaryEl = container.querySelector("#baccaratSummary");
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const riskMode = session.bet_amount >= 50;
+    const setting = session.settings || defaultSetting;
+    const riskMode =
+      setting.risk_enabled && session.bet_amount <= setting.risk_threshold;
     const forcedOutcome = riskMode ? pickRiggedOutcome() : null;
     const riggedDeck = riskMode && forcedOutcome ? generateRiggedDeck(forcedOutcome) : null;
 
@@ -688,28 +787,31 @@
     keyFeedback.textContent = message;
   }
 
-  keyForm.addEventListener("submit", function (event) {
-    event.preventDefault();
-    const sessionKey = document.getElementById("sessionKey").value.trim();
-    if (!sessionKey) {
-      showFeedback("세션 키를 입력하세요.", false);
-      return;
-    }
-    verifySessionKey(sessionKey)
-      .then((response) => {
-        if (!response.valid) {
-          showFeedback(
-            response.message || "세션 키가 유효하지 않습니다.",
-            false
+keyForm.addEventListener("submit", function (event) {
+  event.preventDefault();
+  const sessionKey = document.getElementById("sessionKey").value.trim();
+  if (!sessionKey) {
+    showFeedback("세션 키를 입력하세요.", false);
+    return;
+  }
+  settingsPromise
+    .catch(() => {})
+    .then(() => verifySessionKey(sessionKey))
+    .then((response) => {
+      if (!response.valid) {
+        showFeedback(
+          response.message || "세션 키가 유효하지 않습니다.",
+          false
           );
           resetUI(true);
           return;
         }
-        currentSession = {
-          session_key: response.session_key,
-          game_id: response.game_id,
-          bet_amount: response.bet_amount,
-        };
+      currentSession = {
+        session_key: response.session_key,
+        game_id: response.game_id,
+        bet_amount: response.bet_amount,
+        settings: gameSettingsCache[response.game_id] || defaultSetting,
+      };
         sessionInfo.classList.remove("d-none");
         const config = gameConfig[currentSession.game_id];
         gameName.textContent =
