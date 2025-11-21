@@ -311,30 +311,22 @@
     return false;
   }
 
-  function renderHand(wrapper, hand, total, title) {
-    wrapper.innerHTML = `
-      <p class="text-muted mb-1">${title}</p>
-      <div class="card-pile mb-2">
-        ${hand
-          .map(
-            (card) => `<span class="baccarat-card">${card.suit}${card.rank}</span>`
-          )
-          .join("")}
-      </div>
-      <p class="mb-0 fw-bold">합계: ${total}</p>
-    `;
-  }
-
   const FACE_DOWN_SYMBOL = "?";
-
-  function renderFaceDownHand(wrapper, title, cardCount = 2) {
-    const placeholders = Array.from({ length: cardCount })
-      .map(() => `<span class="baccarat-card">${FACE_DOWN_SYMBOL}</span>`)
+  function renderHand(wrapper, hand, visibleCount = null, title) {
+    const count = visibleCount ?? hand.length;
+    const cardsHtml = Array.from({ length: count })
+      .map((_, index) => {
+        const card = hand[index];
+        return `<span class="baccarat-card">${
+          card ? `${card.suit}${card.rank}` : FACE_DOWN_SYMBOL
+        }</span>`;
+      })
       .join("");
+    const totalText = hand.length ? handValue(hand) : "??";
     wrapper.innerHTML = `
       <p class="text-muted mb-1">${title}</p>
-      <div class="card-pile mb-2">${placeholders}</div>
-      <p class="mb-0 fw-bold">합계: ??</p>
+      <div class="card-pile mb-2">${cardsHtml}</div>
+      <p class="mb-0 fw-bold">합계: ${totalText}</p>
     `;
   }
 
@@ -387,14 +379,14 @@
       handElement,
       label,
       deck,
+      visibleCount,
       perCardDelay
     ) {
-      for (let i = 0; i < 2; i += 1) {
+      for (let i = 0; i < visibleCount; i += 1) {
         const card = drawCard(deck);
         targetHand.push(card);
         appendLog(`${label} 카드 공개: ${card.suit}${card.rank}`);
-        const total = handValue(targetHand);
-        renderHand(handElement, targetHand, total, label);
+        renderHand(handElement, targetHand, visibleCount, label);
         await wait(perCardDelay);
       }
       appendLog(`${label} 카드 공개 완료`);
@@ -404,18 +396,34 @@
       const deck = createDeck(2);
       const playerHand = [];
       const bankerHand = [];
+      let playerVisible = 2;
+      let bankerVisible = 2;
       let playerThirdCard = null;
       let bankerThirdCard = null;
 
       appendLog("카드 배분을 시작합니다.");
-      renderFaceDownHand(playerHandEl, "PLAYER");
-      renderFaceDownHand(bankerHandEl, "BANKER");
+      renderHand(playerHandEl, playerHand, playerVisible, "PLAYER");
+      renderHand(bankerHandEl, bankerHand, bankerVisible, "BANKER");
       await wait(1000);
       appendLog("PLAYER 카드 공개 중...");
-      await revealInitialHand(playerHand, playerHandEl, "PLAYER", deck, 1000);
+      await revealInitialHand(
+        playerHand,
+        playerHandEl,
+        "PLAYER",
+        deck,
+        playerVisible,
+        1000
+      );
       await wait(2000);
       appendLog("BANKER 카드 공개 중...");
-      await revealInitialHand(bankerHand, bankerHandEl, "BANKER", deck, 1000);
+      await revealInitialHand(
+        bankerHand,
+        bankerHandEl,
+        "BANKER",
+        deck,
+        bankerVisible,
+        1000
+      );
       await wait(1000);
 
       let playerValue = handValue(playerHand);
@@ -427,12 +435,14 @@
         appendLog("Natural 발생! 추가 카드는 없습니다.");
       } else {
         if (playerValue <= 5) {
+          playerVisible = 3;
+          renderHand(playerHandEl, playerHand, playerVisible, "PLAYER");
           await wait(1000);
           playerThirdCard = drawCard(deck);
           playerHand.push(playerThirdCard);
           appendLog("PLAYER 보충 카드 공개 중...");
           playerValue = handValue(playerHand);
-          renderHand(playerHandEl, playerHand, playerValue, "PLAYER");
+          renderHand(playerHandEl, playerHand, playerVisible, "PLAYER");
           appendLog(`Player 3번째 카드: ${playerThirdCard.suit}${playerThirdCard.rank}`);
         } else {
           appendLog("Player는 서있습니다.");
@@ -441,6 +451,8 @@
         const playerThirdValue =
           playerThirdCard === null ? null : playerThirdCard.value;
         if (shouldBankerDraw(bankerValue, playerThirdValue)) {
+          bankerVisible = 3;
+          renderHand(bankerHandEl, bankerHand, bankerVisible, "BANKER");
           await wait(1000);
           bankerThirdCard = drawCard(deck);
           bankerHand.push(bankerThirdCard);
@@ -449,7 +461,7 @@
             `Banker 3번째 카드: ${bankerThirdCard.suit}${bankerThirdCard.rank}`
           );
           bankerValue = handValue(bankerHand);
-          renderHand(bankerHandEl, bankerHand, bankerValue, "BANKER");
+          renderHand(bankerHandEl, bankerHand, bankerVisible, "BANKER");
         } else {
           appendLog("Banker는 서있습니다.");
         }
