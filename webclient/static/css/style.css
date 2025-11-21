@@ -1,0 +1,75 @@
+body {
+  background: radial-gradient(circle at top, #2b5876, #1a1f2b);
+  min-height: 100vh;
+  position: relative;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: radial-gradient(
+      rgba(255, 255, 255, 0.08) 2px,
+      transparent 2px
+    ),
+    radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 80px 80px, 40px 40px;
+  opacity: 0.4;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.container {
+  position: relative;
+  z-index: 1;
+}
+
+.card {
+  border: none;
+}
+
+.game-placeholder {
+  color: #6c757d;
+}
+
+.slot-symbol {
+  font-size: 2rem;
+  font-weight: 700;
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f3f5;
+  margin: 0 10px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.card-pile {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.baccarat-card {
+  border: 1px solid #dee2e6;
+  padding: 8px 12px;
+  border-radius: 8px;
+  min-width: 56px;
+  text-align: center;
+  font-weight: 600;
+  background: #fff;
+}
+
+.text-small {
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.log-active {
+  color: #212529 !important;
+  font-weight: 700;
+}

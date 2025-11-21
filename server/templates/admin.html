@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Virtual Probability Simulation - Admin</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="/admin_static/css/admin.css" />
+  </head>
+  <body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+      <div class="container">
+        <span class="navbar-brand">Virtual Probability Simulation</span>
+        <span class="text-white-50">가상 포인트 기반 시뮬레이션</span>
+      </div>
+    </nav>
+
+    <main class="container pb-5">
+      <section class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+          <h5 class="card-title mb-0">세션 생성</h5>
+        </div>
+        <div class="card-body">
+          <form id="sessionForm" class="row gy-3 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label" for="gameSelect">게임 선택</label>
+              <select class="form-select" id="gameSelect" required>
+                <option value="updown">업다운</option>
+                <option value="slot">슬롯 머신</option>
+                <option value="baccarat">바카라</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="betAmount">배팅 포인트</label>
+              <input
+                type="number"
+                min="1"
+                class="form-control"
+                id="betAmount"
+                placeholder="예: 100"
+                required
+              />
+            </div>
+            <div class="col-md-4">
+              <button type="submit" class="btn btn-primary w-100">
+                세션 생성
+              </button>
+            </div>
+          </form>
+          <div id="sessionFeedback" class="mt-3 d-none alert" role="alert"></div>
+        </div>
+      </section>
+
+      <section class="row g-4">
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div
+              class="card-header d-flex justify-content-between align-items-center"
+            >
+              <h5 class="card-title mb-0">최근 세션</h5>
+              <button
+                class="btn btn-sm btn-outline-secondary"
+                id="refreshSessions"
+                type="button"
+              >
+                새로고침
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>세션 키</th>
+                    <th>게임</th>
+                    <th>포인트</th>
+                    <th>생성 (KST)</th>
+                    <th>사용됨</th>
+                  </tr>
+                </thead>
+                <tbody id="sessionTableBody">
+                  {% for session in sessions %}
+                  <tr>
+                    <td>
+                      <code>{{ session.session_key }}</code>
+                    </td>
+                    <td>{{ session.game_id }}</td>
+                    <td>{{ session.bet_amount }}</td>
+                    <td>{{ session.created_kst }}</td>
+                    <td>
+                      {% if session.used %}
+                      <span class="badge bg-success">완료</span>
+                      {% else %}
+                      <span class="badge bg-secondary">미사용</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div
+              class="card-header d-flex justify-content-between align-items-center"
+            >
+              <h5 class="card-title mb-0">최근 결과 보고</h5>
+              <button
+                class="btn btn-sm btn-outline-secondary"
+                id="refreshResults"
+                type="button"
+              >
+                새로고침
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>세션 키</th>
+                    <th>게임</th>
+                    <th>베팅</th>
+                    <th>결과</th>
+                    <th>배당</th>
+                    <th>시간 (KST)</th>
+                  </tr>
+                </thead>
+                <tbody id="resultTableBody">
+                  {% for row in results %}
+                  <tr>
+                    <td><code>{{ row.session_key }}</code></td>
+                    <td>{{ row.game_id }}</td>
+                    <td>{{ row.bet_choice or "-" }}</td>
+                    <td>{{ row.result }}</td>
+                    <td>x{{ "%.2f"|format(row.payout_multiplier) }}</td>
+                    <td>{{ row.timestamp_kst }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/admin_static/js/admin.js"></script>
+  </body>
+</html>

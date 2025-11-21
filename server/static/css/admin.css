@@ -1,0 +1,15 @@
+body {
+  min-height: 100vh;
+}
+
+code {
+  user-select: all;
+}
+
+.table-responsive {
+  max-height: 420px;
+}
+
+.card {
+  border: none;
+}
