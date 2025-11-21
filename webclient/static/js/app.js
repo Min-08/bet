@@ -471,14 +471,17 @@
 
       if (outcome === "tie") {
         if (betChoice === "tie") {
-          payoutMultiplier = 8;
+          payoutMultiplier = 8; // Tie 8:1 (some tables pay 9:1 or higher).
           resultStatus = "win";
         } else {
           resultStatus = "tie";
         }
       } else if (betChoice === outcome) {
         resultStatus = "win";
-        payoutMultiplier = outcome === "player" ? 2 : 1.95;
+        payoutMultiplier =
+          outcome === "player"
+            ? 2 // Player 1:1 payout -> total return x2.
+            : 1.95; // Banker 1:1 minus 5% commission -> total return x1.95.
       }
 
       const outcomeText =
