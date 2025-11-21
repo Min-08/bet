@@ -481,14 +481,15 @@
         payoutMultiplier = outcome === "player" ? 2 : 1.95;
       }
 
+      const outcomeText =
+        outcome === "tie"
+          ? "Tie"
+          : outcome === "player"
+          ? "Player 승"
+          : "Banker 승";
+
       appendLog(
-        `최종 판정: ${
-          outcome === "tie"
-            ? "Tie"
-            : outcome === "player"
-            ? "Player 승"
-            : "Banker 승"
-        }`
+        `최종 판정: ${outcomeText} / 베팅 결과: ${resultStatus.toUpperCase()}`
       );
 
       await wait(2000);
