@@ -313,7 +313,12 @@
 
   const FACE_DOWN_SYMBOL = "?";
   function renderHand(wrapper, hand, visibleCount = null, title) {
-    const count = visibleCount ?? hand.length;
+    const count =
+      visibleCount !== null && typeof visibleCount !== "undefined"
+        ? visibleCount
+        : hand.length > 0
+        ? hand.length
+        : 2;
     const cardsHtml = Array.from({ length: count })
       .map((_, index) => {
         const card = hand[index];
@@ -322,12 +327,82 @@
         }</span>`;
       })
       .join("");
-    const totalText = hand.length ? handValue(hand) : "??";
+    const totalText =
+      hand.length === count && count > 0 ? handValue(hand) : "??";
     wrapper.innerHTML = `
       <p class="text-muted mb-1">${title}</p>
       <div class="card-pile mb-2">${cardsHtml}</div>
       <p class="mb-0 fw-bold">합계: ${totalText}</p>
     `;
+  }
+
+  function drawFromDeckStack(deck) {
+    if (!deck.length) {
+      throw new Error("덱이 비었습니다.");
+    }
+    return deck.pop();
+  }
+
+  function simulateBaccaratOutcome(deckSource) {
+    const deck = [...deckSource];
+    const draw = () => drawFromDeckStack(deck);
+    const playerHand = [];
+    const bankerHand = [];
+    for (let i = 0; i < 2; i += 1) playerHand.push(draw());
+    for (let i = 0; i < 2; i += 1) bankerHand.push(draw());
+
+    let playerValue = handValue(playerHand);
+    let bankerValue = handValue(bankerHand);
+    let playerThirdCard = null;
+    let bankerThirdCard = null;
+
+    const natural =
+      playerValue >= 8 || bankerValue >= 8 ? Math.max(playerValue, bankerValue) : null;
+    if (natural === null) {
+      if (playerValue <= 5) {
+        playerThirdCard = draw();
+        playerHand.push(playerThirdCard);
+        playerValue = handValue(playerHand);
+      }
+      const playerThirdValue =
+        playerThirdCard === null ? null : playerThirdCard.value;
+      if (shouldBankerDraw(bankerValue, playerThirdValue)) {
+        bankerThirdCard = draw();
+        bankerHand.push(bankerThirdCard);
+        bankerValue = handValue(bankerHand);
+      }
+    }
+
+    const outcome =
+      playerValue > bankerValue
+        ? "player"
+        : bankerValue > playerValue
+        ? "banker"
+        : "tie";
+
+    return outcome;
+  }
+
+  function pickRiggedOutcome() {
+    const roll = Math.random();
+    if (roll < 0.7) {
+      return "banker";
+    }
+    if (roll < 0.95) {
+      return "player";
+    }
+    return "tie";
+  }
+
+  function generateRiggedDeck(targetOutcome, maxAttempts = 2000) {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const deck = createDeck(2);
+      const outcome = simulateBaccaratOutcome(deck);
+      if (outcome === targetOutcome) {
+        return deck;
+      }
+    }
+    return null;
   }
 
   function renderBaccaratGame(container, session, onComplete) {
@@ -363,6 +438,9 @@
     const logList = container.querySelector("#logList");
     const summaryEl = container.querySelector("#baccaratSummary");
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const riskMode = session.bet_amount >= 50;
+    const forcedOutcome = riskMode ? pickRiggedOutcome() : null;
+    const riggedDeck = riskMode && forcedOutcome ? generateRiggedDeck(forcedOutcome) : null;
 
     function appendLog(message) {
       const item = document.createElement("li");
@@ -393,7 +471,7 @@
     }
 
     async function playRound() {
-      const deck = createDeck(2);
+      const deck = riggedDeck ? [...riggedDeck] : createDeck(2);
       const playerHand = [];
       const bankerHand = [];
       let playerVisible = 2;
@@ -401,6 +479,9 @@
       let playerThirdCard = null;
       let bankerThirdCard = null;
 
+      if (riskMode && riggedDeck) {
+        appendLog("리스크 판: 카지노 우세 시나리오 적용 중...");
+      }
       appendLog("카드 배분을 시작합니다.");
       renderHand(playerHandEl, playerHand, playerVisible, "PLAYER");
       renderHand(bankerHandEl, bankerHand, bankerVisible, "BANKER");
