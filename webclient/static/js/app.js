@@ -479,9 +479,9 @@
       let playerThirdCard = null;
       let bankerThirdCard = null;
 
-      if (riskMode && riggedDeck) {
-        appendLog("리스크 판: 카지노 우세 시나리오 적용 중...");
-      }
+      //if (riskMode && riggedDeck) {
+      //  appendLog("리스크 판: 카지노 우세 시나리오 적용 중...");
+      //}
       appendLog("카드 배분을 시작합니다.");
       renderHand(playerHandEl, playerHand, playerVisible, "PLAYER");
       renderHand(bankerHandEl, bankerHand, bankerVisible, "BANKER");
