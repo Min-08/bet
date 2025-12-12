@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Virtual Probability Simulation - Admin</title>
+    <title>Admin - Virtual Probability Simulation</title>
     <link
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
       rel="stylesheet"
@@ -15,320 +15,98 @@
   <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
       <div class="container">
-        <span class="navbar-brand">Virtual Probability Simulation</span>
-        <span class="text-white-50">가상 포인트 기반 시뮬레이션</span>
+        <span class="navbar-brand">Admin Console</span>
+        <span class="text-white-50">계정/포인트 관리</span>
       </div>
     </nav>
 
     <main class="container pb-5">
       <section class="card shadow-sm mb-4">
-        <div class="card-header bg-white">
-          <h5 class="card-title mb-0">세션 생성</h5>
-        </div>
         <div class="card-body">
-          <form id="sessionForm" class="row gy-3 align-items-end">
+          <div class="row g-3 align-items-end">
             <div class="col-md-4">
-              <label class="form-label" for="gameSelect">게임 선택</label>
-              <select class="form-select" id="gameSelect" required>
-                <option value="updown">업다운</option>
-                <option value="slot">슬롯 머신</option>
-                <option value="baccarat">바카라</option>
-              </select>
+              <label class="form-label" for="adminSecret">관리자 비밀번호</label>
+              <input
+                type="password"
+                id="adminSecret"
+                class="form-control"
+                placeholder="환경변수 admin_secret"
+              />
+            </div>
+            <div class="col-md-2 d-grid">
+              <button id="adminAuthBtn" class="btn btn-secondary">
+                확인
+              </button>
             </div>
             <div class="col-md-4">
-              <label class="form-label" for="betAmount">배팅 포인트</label>
+              <label class="form-label">상태</label>
+              <div id="adminFeedback" class="alert alert-info mb-0">
+                비밀번호를 입력하세요.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card shadow-sm mb-4">
+        <div class="card-header"><h5 class="mb-0">계정 생성</h5></div>
+        <div class="card-body">
+          <form id="userCreateForm" class="row g-3 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label" for="userName">이름</label>
+              <input type="text" id="userName" class="form-control" required />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="userPin">PIN (4자리)</label>
               <input
-                type="number"
-                min="1"
+                type="password"
+                id="userPin"
+                maxlength="4"
+                pattern="\d{4}"
                 class="form-control"
-                id="betAmount"
-                placeholder="예: 100"
                 required
               />
             </div>
-            <div class="col-md-4">
-              <button type="submit" class="btn btn-primary w-100">
-                세션 생성
-              </button>
+            <div class="col-md-3">
+              <label class="form-label" for="initialBalance">초기 포인트</label>
+              <input type="number" id="initialBalance" value="0" class="form-control" />
+            </div>
+            <div class="col-md-2 d-grid">
+              <button type="submit" class="btn btn-primary">생성</button>
             </div>
           </form>
-          <div id="sessionFeedback" class="mt-3 d-none alert" role="alert"></div>
-        </div>
-      </section>
-      <section class="row g-4">
-        <div class="col-lg-6">
-          <div class="card shadow-sm h-100">
-            <div
-              class="card-header d-flex justify-content-between align-items-center"
-            >
-              <h5 class="card-title mb-0">최근 세션</h5>
-              <button
-                class="btn btn-sm btn-outline-secondary"
-                id="refreshSessions"
-                type="button"
-              >
-                새로고침
-              </button>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead>
-                  <tr>
-                    <th>세션 키</th>
-                    <th>게임</th>
-                    <th>포인트</th>
-                    <th>생성 (KST)</th>
-                    <th>사용됨</th>
-                  </tr>
-                </thead>
-                <tbody id="sessionTableBody">
-                  {% for session in sessions %}
-                  <tr>
-                    <td>
-                      <code>{{ session.session_key }}</code>
-                    </td>
-                    <td>{{ session.game_id }}</td>
-                    <td>{{ session.bet_amount }}</td>
-                    <td>{{ session.created_kst }}</td>
-                    <td>
-                      {% if session.used %}
-                      <span class="badge bg-success">완료</span>
-                      {% else %}
-                      <span class="badge bg-secondary">미사용</span>
-                      {% endif %}
-                    </td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-lg-6">
-          <div class="card shadow-sm h-100">
-            <div
-              class="card-header d-flex justify-content-between align-items-center"
-            >
-              <h5 class="card-title mb-0">최근 결과 보고</h5>
-              <button
-                class="btn btn-sm btn-outline-secondary"
-                id="refreshResults"
-                type="button"
-              >
-                새로고침
-              </button>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead>
-                  <tr>
-                    <th>세션 키</th>
-                    <th>게임</th>
-                    <th>베팅</th>
-                    <th>결과</th>
-                    <th>배당</th>
-                    <th>획득 포인트</th>
-                  </tr>
-                </thead>
-                <tbody id="resultTableBody">
-                  {% for row in results %}
-                  <tr>
-                    <td><code>{{ row.session_key }}</code></td>
-                    <td>{{ row.game_id }}</td>
-                    <td>{{ row.bet_choice or "-" }}</td>
-                    <td>{{ row.result }}</td>
-                    <td>x{{ "%.2f"|format(row.payout_multiplier) }}</td>
-                    <td>{{ "%.2f"|format(row.payout_amount) }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </section>
 
-      <section class="card shadow-sm mt-4">
-        <div
-          class="card-header d-flex justify-content-between align-items-center"
-        >
-          <h5 class="card-title mb-0">게임별 확률 지표</h5>
-          <span class="text-muted small">집계 기준: 전체 기록</span>
+      <section class="card shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">계정 목록</h5>
+          <div class="d-flex gap-2">
+            <input
+              type="text"
+              id="searchUser"
+              class="form-control form-control-sm"
+              placeholder="이름 검색"
+            />
+            <button id="refreshUsers" class="btn btn-outline-secondary btn-sm">새로고침</button>
+          </div>
         </div>
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0">
             <thead>
               <tr>
-                <th>게임</th>
-                <th>총 판수</th>
-                <th>플레이어 승률</th>
-                <th>카지노 승률</th>
-                <th>누적 이익</th>
+                <th>이름</th>
+                <th>PIN</th>
+                <th>잔액</th>
+                <th>조정</th>
               </tr>
             </thead>
-            <tbody>
-              {% if game_stats %}
-              {% for stat in game_stats %}
-              <tr>
-                <td>{{ stat.game_name }}</td>
-                <td>{{ stat.total }}</td>
-                <td>{{ "%.1f"|format(stat.player_win_rate) }}%</td>
-                <td>{{ "%.1f"|format(stat.casino_win_rate) }}%</td>
-                <td class="{{ 'text-success' if stat.profit >=0 else 'text-danger' }}">
-                  {{ "%.2f"|format(stat.profit) }}
-                </td>
-              </tr>
-              {% endfor %}
-              {% else %}
-              <tr>
-                <td colspan="5" class="text-center text-muted py-4">
-                  아직 통계가 없습니다.
-                </td>
-              </tr>
-              {% endif %}
-            </tbody>
+            <tbody id="userTableBody"></tbody>
           </table>
         </div>
       </section>
 
-      <section class="card shadow-sm mt-4">
-        <div class="card-body">
-          <div class="row g-4 align-items-start">
-            <div class="col-lg-4">
-              <h6 class="text-muted">총 누적 이익</h6>
-              <p class="display-6 fw-semibold {{ 'text-success' if total_profit >= 0 else 'text-danger' }}">
-                {{ "%.2f"|format(total_profit) }} pts
-              </p>
-              <ul class="list-unstyled text-muted small mb-0">
-                <li>게임 이익: {{ "%.2f"|format(game_profit_total) }} pts</li>
-                <li>수동 조정 합계: {{ "%.2f"|format(adjustment_total) }} pts</li>
-              </ul>
-            </div>
-            <div class="col-lg-8">
-              <h6 class="mb-3">오프라인 조정</h6>
-              <form id="adjustmentForm" class="row g-3">
-                <div class="col-md-4">
-                  <label class="form-label" for="adjustmentAmount">조정 포인트</label>
-                  <input
-                    type="number"
-                    class="form-control"
-                    id="adjustmentAmount"
-                    step="0.01"
-                    placeholder="예: 150 또는 -50"
-                    required
-                  />
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label" for="adjustmentNote">메모</label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="adjustmentNote"
-                    placeholder="오프라인 기록 설명"
-                  />
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label text-white">.</label>
-                  <button type="submit" class="btn btn-primary w-100">
-                    기록
-                  </button>
-                </div>
-              </form>
-              <div
-                id="adjustmentFeedback"
-                class="alert alert-success d-none mt-3"
-                role="alert"
-              ></div>
-            </div>
-          </div>
-        </div>
-        <div class="table-responsive border-top">
-          <table class="table table-sm align-middle mb-0">
-            <thead>
-              <tr>
-                <th>시간 (KST)</th>
-                <th>포인트</th>
-                <th>메모</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {% if adjustments %}
-              {% for adj in adjustments %}
-              <tr>
-                <td>{{ adj.created_kst }}</td>
-                <td class="{{ 'text-success' if adj.amount >=0 else 'text-danger' }}">
-                  {{ "%.2f"|format(adj.amount) }}
-                </td>
-                <td>{{ adj.description or "-" }}</td>
-                <td>
-                  <button
-                    class="btn btn-sm btn-outline-danger adjustment-delete"
-                    data-adjustment-id="{{ adj.id }}"
-                  >
-                    삭제
-                  </button>
-                </td>
-              </tr>
-              {% endfor %}
-              {% else %}
-              <tr>
-                <td colspan="4" class="text-center text-muted py-3">
-                  등록된 조정 내역이 없습니다.
-                </td>
-              </tr>
-              {% endif %}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="card shadow-sm mt-4">
-        <div class="card-body">
-          <div class="row g-4">
-            <div class="col-md-6">
-              <h6 class="mb-3">세션 삭제</h6>
-              <form id="deleteSessionForm" class="row g-3">
-                <div class="col-8">
-                  <label class="form-label" for="deleteSessionKey"
-                    >세션 키</label
-                  >
-                  <input
-                    type="text"
-                    id="deleteSessionKey"
-                    class="form-control"
-                    placeholder="예: a1b2c3d4"
-                    required
-                  />
-                </div>
-                <div class="col-4">
-                  <label class="form-label text-white">.</label>
-                  <button type="submit" class="btn btn-danger w-100">
-                    삭제
-                  </button>
-                </div>
-              </form>
-            </div>
-            <div class="col-md-6 border-start">
-              <h6>전체 데이터 초기화</h6>
-              <p class="text-muted small mb-2">
-                세션/결과 기록을 모두 삭제합니다. (조정 내역은 유지)
-              </p>
-              <button id="resetDatabase" class="btn btn-outline-danger">
-                전체 삭제
-              </button>
-              <div
-                id="deleteFeedback"
-                class="alert alert-info d-none mt-3"
-                role="alert"
-              ></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card shadow-sm mt-4" id="gameSettingsPanel">
+      <section class="card shadow-sm mb-4" id="gameSettingsPanel">
         <div class="card-header">
           <button
             class="btn btn-outline-primary"
@@ -340,6 +118,20 @@
           >
             게임 세부 설정
           </button>
+        </div>
+        <div class="card-body border-top">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">게임 로그</h6>
+            <button id="refreshLogs" class="btn btn-outline-secondary btn-sm">
+              새로고침
+            </button>
+          </div>
+          <div id="gameLogStatus" class="text-muted small mb-2">
+            관리자 비밀번호 입력 후 확인을 눌러주세요.
+          </div>
+          <div id="gameLogList" class="game-log-list border rounded p-2 bg-white">
+            <div class="text-muted small">로그가 여기에 표시됩니다.</div>
+          </div>
         </div>
         <div class="collapse" id="gameSettingsCollapse">
           <div class="card-body">
@@ -410,7 +202,7 @@
                       {% if setting.assist_enabled %}checked{% endif %}
                     />
                     <label class="form-check-label" for="assist_{{ setting.game_id }}">
-                      확률 보정 활성화
+                      확률 보정 활성화 (플레이어 우세)
                     </label>
                   </div>
                   <div class="mb-3">

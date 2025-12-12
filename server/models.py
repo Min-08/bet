@@ -20,6 +20,7 @@ class GameResult(Base):
     __tablename__ = "game_results"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True)
     session_key = Column(String, index=True, nullable=False)
     game_id = Column(String, nullable=False)
     bet_amount = Column(Integer, nullable=False)
@@ -29,6 +30,31 @@ class GameResult(Base):
     payout_amount = Column(Float, nullable=False)
     detail = Column(String, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+    type = Column(String, nullable=False)  # charge | deduct | game
+    game_type = Column(String, nullable=True)
+    amount = Column(Integer, nullable=False)
+    before_balance = Column(Integer, nullable=False)
+    after_balance = Column(Integer, nullable=False)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, nullable=False)
+    pin = Column(String, nullable=False)
+    balance = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class FinancialAdjustment(Base):
@@ -52,3 +78,15 @@ class GameSetting(Base):
     assist_max_bet = Column(Integer, default=50, nullable=False)
     player_advantage_percent = Column(Float, default=0.0, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class GameLog(Base):
+    __tablename__ = "game_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True)
+    user_name = Column(String, nullable=True)
+    game_id = Column(String, nullable=True)
+    action = Column(String, nullable=False)
+    detail = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

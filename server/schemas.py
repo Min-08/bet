@@ -55,6 +55,7 @@ class SessionListItem(BaseModel):
 
 
 class ResultListItem(BaseModel):
+    user_id: Optional[int] = None
     session_key: str
     game_id: GameID
     bet_amount: int
@@ -94,5 +95,97 @@ class GameSettingItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TransactionItem(BaseModel):
+    id: int
+    user_id: int
+    type: str
+    game_type: Optional[str] = None
+    amount: int
+    before_balance: int
+    after_balance: int
+    description: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class GameSettingsUpdate(BaseModel):
     settings: List[GameSettingItem]
+
+
+class GameLogItem(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    user_name: Optional[str] = None
+    game_id: Optional[str] = None
+    action: str
+    detail: Optional[str] = None
+    created_at: datetime
+    created_at_kst: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserBase(BaseModel):
+    name: str
+
+
+class UserCreate(UserBase):
+    pin: str
+    initial_balance: int = 0
+
+
+class UserItem(UserBase):
+    id: int
+    balance: int
+    pin: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LoginRequest(BaseModel):
+    name: str
+    pin: str
+
+
+class LoginResponse(BaseModel):
+    token: str
+    user: UserItem
+
+
+class AdjustBalanceRequest(BaseModel):
+    delta: int
+    reason: Optional[str] = None
+
+
+class MeResponse(UserItem):
+    pass
+
+
+class GameBaseRequest(BaseModel):
+    bet_amount: int = Field(gt=0)
+
+
+class UpdownRequest(GameBaseRequest):
+    guesses: List[int]
+
+
+class UpdownGuessRequest(BaseModel):
+    guess: int
+
+
+class SlotRequest(GameBaseRequest):
+    pass
+
+
+class BaccaratRequest(GameBaseRequest):
+    bet_choice: Literal["player", "banker", "tie"]
+
+
+class GameResponse(BaseModel):
+    result: Literal["win", "lose", "tie", "pending"]
+    payout_multiplier: float
+    payout_amount: float
+    delta: float
+    balance: float
+    detail: Optional[dict] = None

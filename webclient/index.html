@@ -15,75 +15,117 @@
   <body class="bg-dark text-light">
     <div class="overlay"></div>
     <div class="container py-5 position-relative">
-      <header class="text-center mb-5">
+      <header class="text-center mb-4">
         <h1>Virtual Probability Simulation</h1>
-        <p class="lead">가상 포인트 기반 시뮬레이션 · 세션 키가 필요합니다.</p>
+        <p class="lead">계정 기반 가상 포인트 시뮬레이터</p>
       </header>
 
-      <section class="card shadow-lg text-dark mb-4">
+      <div id="authCard" class="card shadow text-dark mb-4">
         <div class="card-body">
-          <form id="keyForm" class="row gy-3 align-items-end">
-            <div class="col-md-8">
-              <label for="sessionKey" class="form-label">세션 키 입력</label>
+          <h5 class="card-title mb-3">로그인</h5>
+          <form id="loginForm" class="row g-3 align-items-end">
+            <div class="col-md-6">
+              <label class="form-label" for="loginName">이름</label>
+              <input type="text" class="form-control" id="loginName" required />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="loginPin">PIN (4자리 숫자)</label>
               <input
-                type="text"
+                type="password"
+                pattern="\d{4}"
+                maxlength="4"
                 class="form-control"
-                id="sessionKey"
-                placeholder="예: a1b2c3d4"
+                id="loginPin"
                 required
               />
             </div>
-            <div class="col-md-4 d-grid">
-              <button type="submit" class="btn btn-primary">
-                세션 확인
-              </button>
+            <div class="col-md-2 d-grid">
+              <button type="submit" class="btn btn-primary">로그인</button>
             </div>
           </form>
-          <div id="keyFeedback" class="alert d-none mt-3" role="alert"></div>
+          <div id="loginFeedback" class="alert d-none mt-3" role="alert"></div>
         </div>
-      </section>
-
-      <section id="sessionInfo" class="card shadow mb-4 d-none text-dark">
-        <div class="card-body">
-          <div class="d-flex flex-column flex-md-row justify-content-between">
-            <div>
-              <p class="mb-1 text-muted">게임 종류</p>
-              <h4 id="gameName" class="mb-0"></h4>
-            </div>
-            <div class="text-md-end">
-              <p class="mb-1 text-muted">배팅 포인트</p>
-              <h4 id="betAmount" class="mb-0"></h4>
-            </div>
-          </div>
-          <p class="mt-3 mb-0">아래 버튼을 눌러 게임을 시작하세요.</p>
-        </div>
-      </section>
-
-      <div class="d-grid mb-4">
-        <button class="btn btn-lg btn-warning" id="startGame" disabled>
-          게임 시작
-        </button>
       </div>
 
-      <section id="gameArea" class="card shadow text-dark d-none">
-        <div class="card-body">
-          <div id="gamePlaceholder" class="game-placeholder text-center py-5">
-            세션 키를 검증한 뒤 게임을 시작하세요.
+      <div id="appArea" class="d-none">
+        <div class="card shadow text-dark mb-4">
+          <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+              <h5 class="mb-1" id="userNameLabel"></h5>
+              <p class="mb-0 text-muted">현재 포인트: <strong id="balanceLabel">0</strong> pt</p>
+            </div>
+            <div>
+              <button id="refreshBalance" class="btn btn-outline-secondary me-2">새로고침</button>
+              <button id="logoutBtn" class="btn btn-outline-light">로그아웃</button>
+            </div>
           </div>
         </div>
-      </section>
 
-      <section id="resultArea" class="card shadow text-dark mt-4 d-none">
-        <div class="card-body">
-          <h5 class="card-title">결과 요약</h5>
-          <p id="resultSummary" class="mb-3 text-muted">
-            아직 결과가 없습니다.
-          </p>
-          <button class="btn btn-success" id="reportResult" disabled>
-            서버에 결과 전송
-          </button>
+        <div class="row g-4 mb-3" id="gameChooser">
+          <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+              <div class="card-body">
+                <h5 class="card-title">업다운</h5>
+                <p class="text-muted">숫자 추측 5회, 배당 7~2x</p>
+                <button class="btn btn-outline-primary w-100 game-select" data-game="updown">선택</button>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+              <div class="card-body">
+                <h5 class="card-title">슬롯 머신</h5>
+                <p class="text-muted">3릴, 777=10x, 같은심볼=5x/1.5x</p>
+                <button class="btn btn-outline-primary w-100 game-select" data-game="slot">선택</button>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+              <div class="card-body">
+                <h5 class="card-title">바카라</h5>
+                <p class="text-muted">Player/Banker/Tie 베팅</p>
+                <button class="btn btn-outline-primary w-100 game-select" data-game="baccarat">선택</button>
+              </div>
+            </div>
+          </div>
         </div>
-      </section>
+
+        <div class="card shadow text-dark">
+          <div class="card-body">
+            <h5 class="card-title" id="selectedGameTitle">게임을 선택하세요</h5>
+            <div class="row g-3 align-items-end">
+              <div class="col-md-3">
+                <label class="form-label">베팅 포인트</label>
+                <input type="number" id="betAmount" class="form-control" min="1" value="1" />
+              </div>
+              <div class="col-md-5" id="updownExtra" style="display:none;">
+                <!-- 업다운 추측 입력 UI는 게임 시작 시 플레이 화면에 렌더링 -->
+              </div>
+              <div class="col-md-3" id="baccaratExtra" style="display:none;">
+                <label class="form-label">베팅 선택</label>
+                <select class="form-select" id="betChoiceBaccarat">
+                  <option value="player">Player</option>
+                  <option value="banker">Banker</option>
+                  <option value="tie">Tie</option>
+                </select>
+              </div>
+              <div class="col-md-2 d-grid">
+                <button class="btn btn-primary" id="playSelected">게임 시작</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card shadow text-dark mt-4">
+          <div class="card-body">
+            <h5 class="card-title">플레이 화면</h5>
+            <div id="gameBoard" class="game-board">
+              <p class="text-muted mb-0">게임을 선택하고 시작하면 여기에서 진행됩니다.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="/game_static/js/app.js" defer></script>
