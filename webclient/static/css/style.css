@@ -72,9 +72,13 @@ body {
 
 .baccarat-card {
   border: 1px solid #dee2e6;
-  padding: 8px 12px;
+  padding: 0;
   border-radius: 8px;
-  min-width: 56px;
+  width: 72px;
+  aspect-ratio: 1 / 1.4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   font-weight: 600;
   background: #fff;
@@ -139,4 +143,9 @@ body {
   max-width: calc(100% - 120px);
   position: relative;
   z-index: 1;
+}
+
+#selectedGameTitle,
+#playCard .card-title {
+  font-weight: 700;
 }

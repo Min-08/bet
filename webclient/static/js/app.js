@@ -5,7 +5,11 @@ const API = {
   updownStart: "/api/game/updown/start",
   updownGuess: "/api/game/updown/guess",
   slot: "/api/game/slot",
+  slotStart: "/api/game/slot/start",
+  slotResolve: "/api/game/slot/resolve",
   baccarat: "/api/game/baccarat",
+  baccaratStart: "/api/game/baccarat/start",
+  baccaratResolve: "/api/game/baccarat/resolve",
 };
 
 const auth = {
@@ -51,7 +55,26 @@ const gameCols = document.querySelectorAll(".game-col");
 
 let currentGame = null;
 let updownInProgress = false;
+let slotSessionId = null;
+let baccaratSessionId = null;
+let selectionLocked = false;
+let slotAnimating = false;
+let baccaratAnimating = false;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isGameLocked = () =>
+  selectionLocked ||
+  updownInProgress ||
+  !!slotSessionId ||
+  !!baccaratSessionId ||
+  slotAnimating ||
+  baccaratAnimating;
+
+const updateGameLock = () => {
+  gameSelectButtons.forEach((btn) => {
+    btn.disabled = isGameLocked();
+  });
+};
 
 const getBetAmount = () => {
   const inline = document.getElementById("inlineBetAmount");
@@ -79,7 +102,12 @@ const setUpdownContent = (html) => {
 
 const attachInlinePlayHandler = () => {
   const inlineBtn = document.getElementById("inlinePlayBtn");
-  if (inlineBtn) inlineBtn.onclick = () => playGame();
+  if (inlineBtn)
+    inlineBtn.onclick = () => {
+      if (currentGame === "slot") return startSlotFlow();
+      if (currentGame === "baccarat") return startBaccaratFlow();
+      return playGame();
+    };
 };
 
 const updownControlsMarkup = (betValue = 1) => `
@@ -180,6 +208,136 @@ const renderUpdownSetup = (gameName) => {
   const defaultBet = betAmountInput ? betAmountInput.value : 1;
   gameBoard.innerHTML = updownControlsMarkup(defaultBet);
   attachInlinePlayHandler();
+  updateGameLock();
+};
+
+const startSlotFlow = async () => {
+  const bet = getBetAmount();
+  if (!bet || bet < 1) {
+    gameBoard.innerHTML = "<p class='text-danger'>베팅 포인트를 입력하세요.</p>";
+    return;
+  }
+  selectionLocked = true;
+  updateGameLock();
+  slotAnimating = false;
+  try {
+    const res = await fetch(API.slotStart, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...auth.headers() },
+      body: JSON.stringify({ bet_amount: bet }),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || "슬롯 시작에 실패했습니다.");
+    }
+    const data = await res.json();
+    slotSessionId = data.detail?.session_id || null;
+    if (typeof data.balance === "number") balanceLabel.textContent = data.balance;
+    updateGameLock();
+    gameBoard.innerHTML = `
+      ${slotControlsMarkup(bet)}
+      <div class="text-center text-muted">스핀 준비 중...</div>
+    `;
+    attachInlinePlayHandler();
+    await sleep(400);
+    await resolveSlotFlow();
+  } catch (error) {
+    gameBoard.innerHTML = `<p class="text-danger">오류: ${error.message}</p>`;
+    selectionLocked = false;
+    updateGameLock();
+  }
+};
+
+const resolveSlotFlow = async () => {
+  if (!slotSessionId) {
+    gameBoard.innerHTML = `<p class="text-danger">진행 중인 슬롯 게임이 없습니다.</p>`;
+    return;
+  }
+  try {
+    const res = await fetch(API.slotResolve, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...auth.headers() },
+      body: JSON.stringify({ session_id: slotSessionId }),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || "슬롯 결과 조회에 실패했습니다.");
+    }
+    const data = await res.json();
+    slotAnimating = true;
+    updateGameLock();
+    renderSlot(data.detail || {}, data);
+    slotSessionId = null;
+  } catch (error) {
+    gameBoard.innerHTML = `<p class="text-danger">오류: ${error.message}</p>`;
+    selectionLocked = false;
+    updateGameLock();
+  }
+};
+
+const startBaccaratFlow = async () => {
+  const bet = getBetAmount();
+  if (!bet || bet < 1) {
+    gameBoard.innerHTML = "<p class='text-danger'>베팅 포인트를 입력하세요.</p>";
+    return;
+  }
+  selectionLocked = true;
+  updateGameLock();
+  baccaratAnimating = false;
+  const betChoice = getBaccaratChoice();
+  try {
+    const res = await fetch(API.baccaratStart, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...auth.headers() },
+      body: JSON.stringify({ bet_amount: bet, bet_choice: betChoice }),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || "바카라 시작에 실패했습니다.");
+    }
+    const data = await res.json();
+    baccaratSessionId = data.detail?.session_id || null;
+    if (typeof data.balance === "number") balanceLabel.textContent = data.balance;
+    updateGameLock();
+    gameBoard.innerHTML = `
+      ${baccaratControlsMarkup(bet, betChoice)}
+      <p class="text-muted mb-0">카드를 준비합니다...</p>
+    `;
+    attachInlinePlayHandler();
+    await sleep(400);
+    await resolveBaccaratFlow();
+  } catch (error) {
+    gameBoard.innerHTML = `<p class="text-danger">오류: ${error.message}</p>`;
+    selectionLocked = false;
+    updateGameLock();
+  }
+};
+
+const resolveBaccaratFlow = async () => {
+  if (!baccaratSessionId) {
+    gameBoard.innerHTML = `<p class="text-danger">진행 중인 바카라 게임이 없습니다.</p>`;
+    return;
+  }
+  try {
+    const res = await fetch(API.baccaratResolve, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...auth.headers() },
+      body: JSON.stringify({ session_id: baccaratSessionId }),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || "바카라 결과 조회에 실패했습니다.");
+    }
+    const data = await res.json();
+    baccaratAnimating = true;
+    updateGameLock();
+    renderBaccarat(data.detail || {}, data);
+    baccaratSessionId = null;
+  } catch (error) {
+    gameBoard.innerHTML = `<p class="text-danger">오류: ${error.message}</p>`;
+    selectionLocked = false;
+    updateGameLock();
+  }
 };
 
 const showAlert = (el, message, variant = "success") => {
@@ -252,8 +410,10 @@ refreshBalanceBtn.addEventListener("click", () => {
 
 gameSelectButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
+    if (isGameLocked()) return;
     currentGame = btn.dataset.game;
     updownInProgress = false;
+    updateGameLock();
     const card = btn.closest(".card");
     const titleEl = card ? card.querySelector(".card-title") : null;
     const descEl = card ? card.querySelector("p.text-muted") : null;
@@ -286,12 +446,18 @@ gameSelectButtons.forEach((btn) => {
 const resetSelection = () => {
   currentGame = null;
   updownInProgress = false;
+  slotSessionId = null;
+  baccaratSessionId = null;
+  selectionLocked = false;
+  slotAnimating = false;
+  baccaratAnimating = false;
   selectedGameTitle.textContent = "게임을 선택하세요";
   setPlayTitle("플레이 화면");
   if (selectedGameDetail) selectedGameDetail.textContent = "";
   if (betCard) betCard.classList.add("d-none");
   if (playCard) playCard.classList.add("d-none");
   gameBoard.innerHTML = `<p class="text-muted mb-0">게임을 선택하고 시작하면 여기에서 진행됩니다.</p>`;
+  updateGameLock();
 };
 
 const renderSlot = (detail, payload) => {
@@ -407,6 +573,10 @@ const renderSlot = (detail, payload) => {
         if (finished === 3) {
           statusEl.textContent = `결과: ${payload.result} / 배당 x${payload.payout_multiplier.toFixed(2)}`;
           resultEl.textContent = `증감: ${payload.delta} pt / 잔액: ${payload.balance} pt`;
+          if (typeof payload.balance === "number") balanceLabel.textContent = payload.balance;
+          slotAnimating = false;
+          selectionLocked = false;
+          updateGameLock();
         }
         return;
       }
@@ -457,7 +627,7 @@ const renderUpdownPending = (detail) => {
   }
 };
 
-const renderBaccarat = (detail, payload) => {
+const renderBaccarat = async (detail, payload) => {
   const playerHand = detail.player_hand || [];
   const bankerHand = detail.banker_hand || [];
   const playerValue = detail.player_value || 0;
@@ -485,56 +655,80 @@ const renderBaccarat = (detail, payload) => {
   const playerPile = document.getElementById("playerPile");
   const bankerPile = document.getElementById("bankerPile");
   const statusEl = document.getElementById("baccaratStatus");
-  const playerCards = ["?", "?", playerHand[2] || null].filter(Boolean);
-  const bankerCards = ["?", "?", bankerHand[2] || null].filter(Boolean);
+  const emptySlot = "\u00a0";
+  const blankCard = "?"; // 숨김 상태 표시
 
   const appendCard = (pile, card) => {
     const span = document.createElement("span");
     span.className = "baccarat-card";
-    span.textContent = card;
+    span.textContent = card && card.trim() ? card : emptySlot;
     pile.appendChild(span);
   };
 
+  const ensurePlaceholders = (pile) => {
+    for (let i = 0; i < 2; i += 1) {
+      const child = pile.children[i];
+      if (child) {
+        child.textContent = emptySlot;
+        child.classList.remove("reveal-anim");
+      } else {
+        appendCard(pile, emptySlot);
+      }
+    }
+  };
+
+  const revealHiddenMarks = async () => {
+    const slots = [...playerPile.children, ...bankerPile.children];
+    for (const slot of slots) {
+      slot.textContent = blankCard;
+      slot.classList.remove("reveal-anim");
+      await sleep(200); // 왼쪽→오른쪽 순차 등장
+    }
+  };
+
+  // 초기 UI가 사라지지 않도록 즉시 2장씩 채워 둔다.
+  ensurePlaceholders(playerPile);
+  ensurePlaceholders(bankerPile);
+  await revealHiddenMarks();
+
   const sequence = async () => {
-    playerPile.innerHTML = "";
-    bankerPile.innerHTML = "";
-    appendCard(playerPile, "?");
-    appendCard(bankerPile, "?");
+    // 처음 2장 상태는 유지된 채, 순차적으로 값만 갱신
     await sleep(600);
-    playerPile.children[0].textContent = playerHand[0] || "?";
+    playerPile.children[0].textContent = playerHand[0] || blankCard;
     statusEl.textContent = "Player 첫 카드 공개";
-    appendCard(bankerPile, "?");
     await sleep(600);
-    bankerPile.children[0].textContent = bankerHand[0] || "?";
+    bankerPile.children[0].textContent = bankerHand[0] || blankCard;
     statusEl.textContent = "Banker 첫 카드 공개";
-    appendCard(playerPile, "?");
     await sleep(600);
-    playerPile.children[1].textContent = playerHand[1] || "?";
+    playerPile.children[1].textContent = playerHand[1] || blankCard;
     statusEl.textContent = "Player 두 번째 카드 공개";
-    bankerPile.children[1].textContent = "?";
     await sleep(600);
-    bankerPile.children[1].textContent = bankerHand[1] || "?";
+    bankerPile.children[1].textContent = bankerHand[1] || blankCard;
     statusEl.textContent = "Banker 두 번째 카드 공개";
 
     if (playerHand.length > 2) {
-      appendCard(playerPile, "?");
+      appendCard(playerPile, "");
       await sleep(800);
-      playerPile.children[2].textContent = playerHand[2];
+      playerPile.children[2].textContent = playerHand[2] || blankCard;
       statusEl.textContent = "Player 세 번째 카드";
     }
     if (bankerHand.length > 2) {
-      appendCard(bankerPile, "?");
+      appendCard(bankerPile, "");
       await sleep(800);
       bankerPile.children[bankerPile.children.length - 1].textContent =
-        bankerHand[2];
+        bankerHand[2] || blankCard;
       statusEl.textContent = "Banker 세 번째 카드";
     }
 
     await sleep(800);
     statusEl.innerHTML = `최종: ${outcome} / Player ${playerValue} vs Banker ${bankerValue}<br>배당 x${payload.payout_multiplier.toFixed(2)} / 증감 ${payload.delta} pt / 잔액 ${payload.balance} pt`;
+    if (typeof payload.balance === "number") balanceLabel.textContent = payload.balance;
+    baccaratAnimating = false;
+    selectionLocked = false;
+    updateGameLock();
   };
 
-  sequence();
+  await sequence();
 };
 
 const playGame = async () => {
@@ -542,6 +736,10 @@ const playGame = async () => {
     gameBoard.innerHTML = "<p>게임을 선택하세요.</p>";
     return;
   }
+  selectionLocked = true;
+  updateGameLock();
+  if (currentGame === "slot") return startSlotFlow();
+  if (currentGame === "baccarat") return startBaccaratFlow();
   const bet = getBetAmount();
   if (!bet || bet < 1) {
     gameBoard.innerHTML = "<p>베팅 포인트를 입력하세요.</p>";
@@ -552,19 +750,21 @@ const playGame = async () => {
   let body = { bet_amount: bet };
   if (currentGame === "updown") {
     // updown 인터랙티브 시작
-    try {
-      const res = await fetch(`${API.updownStart}?bet_amount=${bet}`, {
-        method: "POST",
-        headers: { ...auth.headers() },
-      });
+  try {
+    const res = await fetch(`${API.updownStart}?bet_amount=${bet}`, {
+      method: "POST",
+      headers: { ...auth.headers() },
+    });
       if (!res.ok) {
         const msg = await res.text();
         throw new Error(msg || "게임 시작에 실패했습니다.");
       }
-      const startData = await res.json();
-      const remainingText = typeof startData.remaining === "number" ? `${startData.remaining}회` : "계산 중...";
-      updownInProgress = true;
-      if (playCard) playCard.classList.remove("d-none");
+    const startData = await res.json();
+    if (typeof startData.balance === "number") balanceLabel.textContent = startData.balance;
+    const remainingText = typeof startData.remaining === "number" ? `${startData.remaining}회` : "계산 중...";
+    updownInProgress = true;
+    updateGameLock();
+    if (playCard) playCard.classList.remove("d-none");
       setUpdownContent(`
         <div class="mb-2">숫자를 입력하고 판정 버튼을 눌러주세요.</div>
         <div class="input-group mb-2" style="max-width:320px;">
@@ -636,8 +836,10 @@ const submitUpdownGuess = async () => {
       renderUpdownPending(data.detail || {});
     } else {
       updownInProgress = false;
+      selectionLocked = false;
       balanceLabel.textContent = data.balance;
       renderUpdown(data.detail || {}, data);
+      updateGameLock();
     }
   } catch (error) {
     if (statusEl) statusEl.textContent = `오류: ${error.message}`;
@@ -645,3 +847,4 @@ const submitUpdownGuess = async () => {
 };
 
 requireLoginUI();
+updateGameLock();

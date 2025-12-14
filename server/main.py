@@ -33,6 +33,8 @@ GAME_LABELS: Dict[str, str] = {
 SECRET_KEY = os.environ.get("TOKEN_SECRET", "dev-secret")
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "adminpass")
 UPDOWN_STATE: Dict[int, dict] = {}
+SLOT_PENDING: Dict[str, dict] = {}
+BACCARAT_PENDING: Dict[str, dict] = {}
 TOKEN_PREFIX = "Bearer "
 BIAS_COOLDOWN_STATE: dict[str, float] = {}
 
@@ -979,11 +981,15 @@ def process_game_result(
     detail: dict,
     bet_choice: str | None = None,
     payout_amount_override: float | None = None,
+    charge_bet: bool = True,
 ):
     payout_amount = payout_amount_override if payout_amount_override is not None else bet_amount * multiplier
     if abs(multiplier - 1.5) < 1e-9 and payout_amount_override is None:
         payout_amount = math.ceil(payout_amount)
-    delta = int(round(payout_amount - bet_amount))
+    if charge_bet:
+        delta = int(round(payout_amount - bet_amount))
+    else:
+        delta = int(round(payout_amount))
     apply_balance_change(
         db,
         user,
@@ -1193,6 +1199,14 @@ def api_game_updown_start(
         "bet_amount": bet_amount,
         "payouts": payouts,
     }
+    apply_balance_change(
+        db,
+        current_user,
+        -bet_amount,
+        description="game:updown:start",
+        game_type="updown",
+        result_type="game",
+    )
     log_game_event(
         db,
         current_user,
@@ -1200,7 +1214,9 @@ def api_game_updown_start(
         "start",
         {"bet_amount": bet_amount, "target": target},
     )
-    return {"message": "게임 시작", "remaining": len(payouts)}
+    db.commit()
+    db.refresh(current_user)
+    return {"message": "게임 시작", "remaining": len(payouts), "balance": current_user.balance}
 
 
 @app.post("/api/game/updown/guess", response_model=schemas.GameResponse)
@@ -1254,6 +1270,7 @@ def api_game_updown_guess(
             adj_result,
             adj_multiplier,
             detail,
+            charge_bet=False,
         )
     return schemas.GameResponse(
         result="pending",
@@ -1263,6 +1280,84 @@ def api_game_updown_guess(
         balance=current_user.balance,
         detail=result_data["detail"],
     )
+
+
+@app.post("/api/game/slot/start", response_model=schemas.GameResponse)
+def api_game_slot_start(
+    payload: schemas.SlotRequest, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    if current_user.balance < payload.bet_amount:
+        raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
+    setting = (
+        db.query(models.GameSetting)
+        .filter(models.GameSetting.game_id == "slot")
+        .first()
+    )
+    if setting is None:
+        raise HTTPException(status_code=400, detail="설정이 없습니다.")
+    global_min, global_max = get_global_limits(db)
+    enforce_bet_limits(setting, global_min, global_max, payload.bet_amount)
+    # 진행 중 세션이 있으면 거부
+    if any(p.get("user_id") == current_user.id for p in SLOT_PENDING.values()):
+        raise HTTPException(status_code=400, detail="진행 중인 슬롯 게임이 있습니다.")
+    apply_balance_change(
+        db,
+        current_user,
+        -payload.bet_amount,
+        description="game:slot:start",
+        game_type="slot",
+        result_type="game",
+    )
+    session_id = str(uuid.uuid4())
+    SLOT_PENDING[session_id] = {
+        "user_id": current_user.id,
+        "bet_amount": payload.bet_amount,
+        "created_at": datetime.utcnow(),
+    }
+    log_game_event(
+        db,
+        current_user,
+        "slot",
+        "start",
+        {"bet_amount": payload.bet_amount, "session_id": session_id},
+        commit=False,
+    )
+    db.commit()
+    db.refresh(current_user)
+    return schemas.GameResponse(
+        result="pending",
+        payout_multiplier=0.0,
+        payout_amount=0.0,
+        delta=-payload.bet_amount,
+        balance=current_user.balance,
+        detail={"session_id": session_id, "anim": build_slot_anim(setting)},
+    )
+
+
+@app.post("/api/game/slot/resolve", response_model=schemas.GameResponse)
+def api_game_slot_resolve(
+    payload: schemas.SessionResolveRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    pending = SLOT_PENDING.get(payload.session_id)
+    if not pending:
+        raise HTTPException(status_code=400, detail="대기 중인 슬롯 게임이 없습니다.")
+    if pending["user_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="본인의 게임만 완료할 수 있습니다.")
+    bet_amount = pending["bet_amount"]
+    setting = (
+        db.query(models.GameSetting)
+        .filter(models.GameSetting.game_id == "slot")
+        .first()
+    )
+    if setting is None:
+        raise HTTPException(status_code=400, detail="설정이 없습니다.")
+    try:
+        response = run_slot_round(db, current_user, setting, bet_amount, charge_bet=False)
+    finally:
+        SLOT_PENDING.pop(payload.session_id, None)
+    return response
 
 
 @app.post("/api/game/slot", response_model=schemas.GameResponse)
@@ -1280,71 +1375,106 @@ def api_game_slot(
         raise HTTPException(status_code=400, detail="설정이 없습니다.")
     global_min, global_max = get_global_limits(db)
     enforce_bet_limits(setting, global_min, global_max, payload.bet_amount)
-    result, multiplier, detail, payout_override = play_slot_logic(setting, payload.bet_amount, db)
-    base_result = result
-    rules = parse_bias_rules(setting)
-    bias_ctx = build_bias_context(db, current_user, "slot", payload.bet_amount, None)
-    result, multiplier, applied_rule = apply_bias("slot", payload.bet_amount, result, multiplier, rules, bias_ctx)
-    if applied_rule:
-        detail["bias_rule"] = applied_rule
-    if applied_rule and result != base_result:
-        # 강제된 결과에 맞춰 심볼/배당을 일치시킨다.
-        payout_override = None
-        if result == "lose":
-            detail["symbols"] = ["A", "B", "C"]
-            detail["jackpot_win"] = False
-            detail["jackpot_amount"] = 0.0
-            multiplier = 0.0
-        else:  # forced win
-            final_symbols = ["A", "A", "B"]
-            final_multiplier = max(multiplier, setting.slot_payout_double_same)
-            if final_multiplier >= setting.slot_payout_triple_seven:
-                final_symbols = ["7", "7", "7"]
-                final_multiplier = setting.slot_payout_triple_seven
-            elif final_multiplier >= setting.slot_payout_triple_same:
-                final_symbols = ["A", "A", "A"]
-                final_multiplier = setting.slot_payout_triple_same
-            multiplier = final_multiplier
-            detail["symbols"] = final_symbols
-            detail["jackpot_win"] = False
-            detail["jackpot_amount"] = 0.0
-    detail["anim"] = {
-        "step_ms": setting.slot_anim_step_ms,
-        "steps1": setting.slot_anim_steps1,
-        "steps2": setting.slot_anim_steps2,
-        "steps3": setting.slot_anim_steps3,
-        "stagger_ms": setting.slot_anim_stagger_ms,
-        "extra_prob": setting.slot_anim_extra_prob,
-        "extra_pct_min": setting.slot_anim_extra_pct_min,
-        "extra_pct_max": setting.slot_anim_extra_pct_max,
-        "smooth_strength": setting.slot_anim_smooth_strength,
-        "match_prob": setting.slot_anim_match_prob,
-        "match_min_pct": setting.slot_anim_match_min_pct,
-        "match_max_pct": setting.slot_anim_match_max_pct,
-        "match7_min_pct": setting.slot_anim_match7_min_pct,
-        "match7_max_pct": setting.slot_anim_match7_max_pct,
-        "extra25_prob": setting.slot_anim_extra25_prob,
-        "extra25_pct": setting.slot_anim_extra25_pct,
-        "smooth_threshold": setting.slot_anim_smooth_threshold,
+    return run_slot_round(db, current_user, setting, payload.bet_amount, charge_bet=True)
+
+
+@app.post("/api/game/baccarat/start", response_model=schemas.GameResponse)
+def api_game_baccarat_start(
+    payload: schemas.BaccaratRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.balance < payload.bet_amount:
+        raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
+    setting = (
+        db.query(models.GameSetting)
+        .filter(models.GameSetting.game_id == "baccarat")
+        .first()
+    )
+    if setting is None:
+        raise HTTPException(status_code=400, detail="설정이 없습니다.")
+    setting_dict = {
+        "maintenance_mode": bool(setting.maintenance_mode) if setting else False,
+        "baccarat_payout_player": setting.baccarat_payout_player if setting else 2.0,
+        "baccarat_payout_banker": setting.baccarat_payout_banker if setting else 1.95,
+        "baccarat_payout_tie": setting.baccarat_payout_tie if setting else 8.0,
+    }
+    if setting_dict["maintenance_mode"]:
+        raise HTTPException(status_code=400, detail="점검 중입니다.")
+    gmin, gmax = get_global_limits(db)
+    enforce_bet_limits(setting, gmin, gmax, payload.bet_amount)
+    if any(p.get("user_id") == current_user.id for p in BACCARAT_PENDING.values()):
+        raise HTTPException(status_code=400, detail="진행 중인 바카라 게임이 있습니다.")
+    apply_balance_change(
+        db,
+        current_user,
+        -payload.bet_amount,
+        description="game:baccarat:start",
+        game_type="baccarat",
+        result_type="game",
+    )
+    session_id = str(uuid.uuid4())
+    BACCARAT_PENDING[session_id] = {
+        "user_id": current_user.id,
+        "bet_amount": payload.bet_amount,
+        "bet_choice": payload.bet_choice,
+        "created_at": datetime.utcnow(),
     }
     log_game_event(
         db,
         current_user,
-        "slot",
-        "play",
-        {"bet_amount": payload.bet_amount, "anim": detail.get("anim", {}), "bias_rule": detail.get("bias_rule")},
+        "baccarat",
+        "start",
+        {"bet_amount": payload.bet_amount, "bet_choice": payload.bet_choice, "session_id": session_id},
         commit=False,
     )
-    return process_game_result(
-        db,
-        current_user,
-        "slot",
-        payload.bet_amount,
-        result,
-        multiplier,
-        detail,
-        payout_amount_override=payout_override,
+    db.commit()
+    db.refresh(current_user)
+    return schemas.GameResponse(
+        result="pending",
+        payout_multiplier=0.0,
+        payout_amount=0.0,
+        delta=-payload.bet_amount,
+        balance=current_user.balance,
+        detail={"session_id": session_id, "bet_choice": payload.bet_choice},
     )
+
+
+@app.post("/api/game/baccarat/resolve", response_model=schemas.GameResponse)
+def api_game_baccarat_resolve(
+    payload: schemas.SessionResolveRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    pending = BACCARAT_PENDING.get(payload.session_id)
+    if not pending:
+        raise HTTPException(status_code=400, detail="대기 중인 바카라 게임이 없습니다.")
+    if pending["user_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="본인의 게임만 완료할 수 있습니다.")
+    bet_amount = pending["bet_amount"]
+    bet_choice = pending["bet_choice"]
+    setting = (
+        db.query(models.GameSetting)
+        .filter(models.GameSetting.game_id == "baccarat")
+        .first()
+    )
+    if setting is None:
+        raise HTTPException(status_code=400, detail="설정이 없습니다.")
+    setting_dict = {
+        "maintenance_mode": bool(setting.maintenance_mode) if setting else False,
+        "baccarat_payout_player": setting.baccarat_payout_player if setting else 2.0,
+        "baccarat_payout_banker": setting.baccarat_payout_banker if setting else 1.95,
+        "baccarat_payout_tie": setting.baccarat_payout_tie if setting else 8.0,
+    }
+    if setting_dict["maintenance_mode"]:
+        raise HTTPException(status_code=400, detail="점검 중입니다.")
+    gmin, gmax = get_global_limits(db)
+    enforce_bet_limits(setting, gmin, gmax, bet_amount)
+    try:
+        response = run_baccarat_round(db, current_user, setting_dict, bet_amount, bet_choice, charge_bet=False)
+    finally:
+        BACCARAT_PENDING.pop(payload.session_id, None)
+    return response
 
 
 @app.post("/api/game/baccarat", response_model=schemas.GameResponse)
@@ -1372,48 +1502,7 @@ def api_game_baccarat(
         raise HTTPException(status_code=400, detail="점검 중입니다.")
     gmin, gmax = get_global_limits(db)
     enforce_bet_limits(setting, gmin, gmax, payload.bet_amount)
-    log_game_event(
-        db,
-        current_user,
-        "baccarat",
-        "play",
-        {"bet_amount": payload.bet_amount, "bet_choice": payload.bet_choice},
-        commit=False,
-    )
-    base_result, multiplier, detail = play_baccarat_logic(
-        payload.bet_choice, setting_dict, None
-    )
-    rules = parse_bias_rules(setting)
-    bias_ctx = build_bias_context(db, current_user, "baccarat", payload.bet_amount, payload.bet_choice)
-    result, multiplier, applied_rule = apply_bias("baccarat", payload.bet_amount, base_result, multiplier, rules, bias_ctx)
-    if applied_rule and result != base_result:
-        target_outcome = None
-        if result == "lose":
-            if payload.bet_choice == "player":
-                target_outcome = "banker"
-            elif payload.bet_choice == "banker":
-                target_outcome = "player"
-            else:
-                target_outcome = "player"
-        elif result == "win":
-            target_outcome = payload.bet_choice
-        if target_outcome:
-            result, multiplier, detail = play_baccarat_logic(
-                payload.bet_choice, setting_dict, target_outcome
-            )
-    detail["bet_choice"] = payload.bet_choice
-    if applied_rule:
-        detail["bias_rule"] = applied_rule
-    return process_game_result(
-        db,
-        current_user,
-        "baccarat",
-        payload.bet_amount,
-        result,
-        multiplier,
-        detail,
-        bet_choice=payload.bet_choice,
-    )
+    return run_baccarat_round(db, current_user, setting_dict, payload.bet_amount, payload.bet_choice, charge_bet=True)
 
 
 def apply_balance_change(
@@ -1657,6 +1746,132 @@ def build_bias_context(db: Session, user: models.User, game_id: str, bet_amount:
         "lose_streak": lose_streak,
         "rtp_recent": rtp_recent,
     }
+
+
+def build_slot_anim(setting: models.GameSetting) -> dict:
+    return {
+        "step_ms": setting.slot_anim_step_ms,
+        "steps1": setting.slot_anim_steps1,
+        "steps2": setting.slot_anim_steps2,
+        "steps3": setting.slot_anim_steps3,
+        "stagger_ms": setting.slot_anim_stagger_ms,
+        "extra_prob": setting.slot_anim_extra_prob,
+        "extra_pct_min": setting.slot_anim_extra_pct_min,
+        "extra_pct_max": setting.slot_anim_extra_pct_max,
+        "smooth_strength": setting.slot_anim_smooth_strength,
+        "match_prob": setting.slot_anim_match_prob,
+        "match_min_pct": setting.slot_anim_match_min_pct,
+        "match_max_pct": setting.slot_anim_match_max_pct,
+        "match7_min_pct": setting.slot_anim_match7_min_pct,
+        "match7_max_pct": setting.slot_anim_match7_max_pct,
+        "extra25_prob": setting.slot_anim_extra25_prob,
+        "extra25_pct": setting.slot_anim_extra25_pct,
+        "smooth_threshold": setting.slot_anim_smooth_threshold,
+    }
+
+
+def run_slot_round(
+    db: Session,
+    current_user: models.User,
+    setting: models.GameSetting,
+    bet_amount: int,
+    charge_bet: bool = True,
+) -> schemas.GameResponse:
+    result, multiplier, detail, payout_override = play_slot_logic(setting, bet_amount, db)
+    base_result = result
+    rules = parse_bias_rules(setting)
+    bias_ctx = build_bias_context(db, current_user, "slot", bet_amount, None)
+    result, multiplier, applied_rule = apply_bias("slot", bet_amount, result, multiplier, rules, bias_ctx)
+    if applied_rule:
+        detail["bias_rule"] = applied_rule
+    if applied_rule and result != base_result:
+        payout_override = None
+        if result == "lose":
+            detail["symbols"] = ["A", "B", "C"]
+            detail["jackpot_win"] = False
+            detail["jackpot_amount"] = 0.0
+            multiplier = 0.0
+        else:  # forced win
+            final_symbols = ["A", "A", "B"]
+            final_multiplier = max(multiplier, setting.slot_payout_double_same)
+            if final_multiplier >= setting.slot_payout_triple_seven:
+                final_symbols = ["7", "7", "7"]
+                final_multiplier = setting.slot_payout_triple_seven
+            elif final_multiplier >= setting.slot_payout_triple_same:
+                final_symbols = ["A", "A", "A"]
+                final_multiplier = setting.slot_payout_triple_same
+            multiplier = final_multiplier
+            detail["symbols"] = final_symbols
+            detail["jackpot_win"] = False
+            detail["jackpot_amount"] = 0.0
+    detail["anim"] = build_slot_anim(setting)
+    log_game_event(
+        db,
+        current_user,
+        "slot",
+        "play",
+        {"bet_amount": bet_amount, "anim": detail.get("anim", {}), "bias_rule": detail.get("bias_rule")},
+        commit=False,
+    )
+    return process_game_result(
+        db,
+        current_user,
+        "slot",
+        bet_amount,
+        result,
+        multiplier,
+        detail,
+        payout_amount_override=payout_override,
+        charge_bet=charge_bet,
+    )
+
+
+def run_baccarat_round(
+    db: Session,
+    current_user: models.User,
+    setting_dict: dict,
+    bet_amount: int,
+    bet_choice: str,
+    charge_bet: bool = True,
+) -> schemas.GameResponse:
+    base_result, multiplier, detail = play_baccarat_logic(bet_choice, setting_dict, None)
+    setting_obj = (
+        db.query(models.GameSetting)
+        .filter(models.GameSetting.game_id == "baccarat")
+        .first()
+    )
+    rules = parse_bias_rules(setting_obj) if setting_obj else []
+    bias_ctx = build_bias_context(db, current_user, "baccarat", bet_amount, bet_choice)
+    result, multiplier, applied_rule = apply_bias("baccarat", bet_amount, base_result, multiplier, rules, bias_ctx)
+    if applied_rule and result != base_result:
+        target_outcome = None
+        if result == "lose":
+            if bet_choice == "player":
+                target_outcome = "banker"
+            elif bet_choice == "banker":
+                target_outcome = "player"
+            else:
+                target_outcome = "player"
+        elif result == "win":
+            target_outcome = bet_choice
+        if target_outcome:
+            result, multiplier, detail = play_baccarat_logic(
+                bet_choice, setting_dict, target_outcome
+            )
+    detail["bet_choice"] = bet_choice
+    if applied_rule:
+        detail["bias_rule"] = applied_rule
+    return process_game_result(
+        db,
+        current_user,
+        "baccarat",
+        bet_amount,
+        result,
+        multiplier,
+        detail,
+        bet_choice=bet_choice,
+        charge_bet=charge_bet,
+    )
 
 
 def apply_bias(

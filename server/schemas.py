@@ -230,6 +230,10 @@ class BaccaratRequest(GameBaseRequest):
     bet_choice: Literal["player", "banker", "tie"]
 
 
+class SessionResolveRequest(BaseModel):
+    session_id: str
+
+
 class GameResponse(BaseModel):
     result: Literal["win", "lose", "tie", "pending"]
     payout_multiplier: float
