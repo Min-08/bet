@@ -94,6 +94,22 @@ body {
   min-width: 140px;
 }
 
+.game-card .card-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 140px;
+  padding-right: 120px; /* reserve space for right-aligned icon */
+  padding-bottom: 12px;
+}
+
+.game-card .card-title,
+.game-card p.text-muted {
+  padding-right: 120px; /* keep text from overlapping the icon */
+}
+
 .icon-badge {
   width: 84px;
   height: 84px;
@@ -102,8 +118,11 @@ body {
   justify-content: center;
   border-radius: 20px;
   background: transparent;
-  margin-top: 6px;
   overflow: hidden;
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
 }
 
 .icon-badge img {
@@ -111,4 +130,13 @@ body {
   height: 120%;
   object-fit: contain;
   display: block;
+}
+
+.game-card .game-select {
+  margin-top: auto;
+  align-self: stretch;
+  width: calc(100% - 120px); /* reduce right side so it doesn't overlap the icon */
+  max-width: calc(100% - 120px);
+  position: relative;
+  z-index: 1;
 }

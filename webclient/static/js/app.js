@@ -45,12 +45,116 @@ const playSelectedBtn = document.getElementById("playSelected");
 const gameBoard = document.getElementById("gameBoard");
 const betCard = document.getElementById("betCard");
 const playCard = document.getElementById("playCard");
+const playCardTitle = playCard ? playCard.querySelector(".card-title") : null;
 const selectedGameDetail = document.getElementById("selectedGameDetail");
 const gameCols = document.querySelectorAll(".game-col");
 
 let currentGame = null;
 let updownInProgress = false;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getBetAmount = () => {
+  const inline = document.getElementById("inlineBetAmount");
+  if (inline) return Number(inline.value);
+  if (betAmountInput) return Number(betAmountInput.value);
+  return 0;
+};
+
+const getBaccaratChoice = () => {
+  const inline = document.getElementById("inlineBetChoiceBaccarat");
+  if (inline) return inline.value;
+  if (betChoiceBaccarat) return betChoiceBaccarat.value;
+  return "player";
+};
+
+const setPlayTitle = (text) => {
+  if (playCardTitle) playCardTitle.textContent = text;
+};
+
+const attachInlinePlayHandler = () => {
+  const inlineBtn = document.getElementById("inlinePlayBtn");
+  if (inlineBtn) inlineBtn.onclick = () => playGame();
+};
+
+const slotControlsMarkup = (betValue = 1) => `
+  <div class="mb-3">
+    <label class="form-label" for="inlineBetAmount">베팅 포인트</label>
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      <input type="number" id="inlineBetAmount" class="form-control" style="max-width: 140px;" min="1" value="${betValue}" />
+      <button class="btn btn-primary" id="inlinePlayBtn">게임 시작</button>
+    </div>
+  </div>
+`;
+
+const baccaratControlsMarkup = (betValue = 1, choice = "player") => `
+  <div class="mb-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label" for="inlineBetAmount">베팅 포인트</label>
+        <input type="number" id="inlineBetAmount" class="form-control" min="1" value="${betValue}" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="inlineBetChoiceBaccarat">베팅 선택</label>
+        <select class="form-select" id="inlineBetChoiceBaccarat">
+          <option value="player" ${choice === "player" ? "selected" : ""}>Player</option>
+          <option value="banker" ${choice === "banker" ? "selected" : ""}>Banker</option>
+          <option value="tie" ${choice === "tie" ? "selected" : ""}>Tie</option>
+        </select>
+      </div>
+      <div class="col-auto d-grid">
+        <button class="btn btn-primary" id="inlinePlayBtn">게임 시작</button>
+      </div>
+    </div>
+  </div>
+`;
+
+const renderSlotSetup = (gameName) => {
+  if (betCard) betCard.classList.add("d-none");
+  if (playCard) playCard.classList.remove("d-none");
+  setPlayTitle(gameName || "SLOT MACHINE");
+  const defaultBet = betAmountInput ? betAmountInput.value : 1;
+  gameBoard.innerHTML = `
+    ${slotControlsMarkup(defaultBet)}
+    <div class="text-center">
+      <div class="d-flex justify-content-center gap-3 mb-2">
+        <div class="slot-reel"><div class="slot-cell">7</div></div>
+        <div class="slot-reel"><div class="slot-cell">7</div></div>
+        <div class="slot-reel"><div class="slot-cell">7</div></div>
+      </div>
+      <p class="text-muted small mb-0">게임 시작을 누르면 바로 스핀합니다.</p>
+    </div>
+  `;
+  attachInlinePlayHandler();
+};
+
+const renderBaccaratSetup = (gameName) => {
+  if (betCard) betCard.classList.add("d-none");
+  if (playCard) playCard.classList.remove("d-none");
+  setPlayTitle(gameName || "BACCARAT");
+  const defaultBet = betAmountInput ? betAmountInput.value : 1;
+  const defaultChoice = betChoiceBaccarat ? betChoiceBaccarat.value : "player";
+  gameBoard.innerHTML = `
+    ${baccaratControlsMarkup(defaultBet, defaultChoice)}
+    <div class="row g-3">
+      <div class="col-md-6">
+        <h6>PLAYER</h6>
+        <div class="card-pile">
+          <span class="baccarat-card">&nbsp;</span>
+          <span class="baccarat-card">&nbsp;</span>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <h6>BANKER</h6>
+        <div class="card-pile">
+          <span class="baccarat-card">&nbsp;</span>
+          <span class="baccarat-card">&nbsp;</span>
+        </div>
+      </div>
+    </div>
+    <p class="mt-3 text-muted mb-0">카드 배분 후 ? 가 나타납니다.</p>
+  `;
+  attachInlinePlayHandler();
+};
 
 const showAlert = (el, message, variant = "success") => {
   el.classList.remove("d-none", "alert-success", "alert-danger");
@@ -129,6 +233,7 @@ gameSelectButtons.forEach((btn) => {
     const descEl = card ? card.querySelector("p.text-muted") : null;
     const gameName = titleEl ? titleEl.textContent.trim() : btn.textContent.trim();
     selectedGameTitle.textContent = gameName;
+    setPlayTitle(gameName);
     if (baccaratExtra)
       baccaratExtra.classList.toggle("d-none", currentGame !== "baccarat");
     if (selectedGameDetail) {
@@ -143,6 +248,14 @@ gameSelectButtons.forEach((btn) => {
         selectedGameDetail.textContent = detailMap[currentGame] || "";
       }
     }
+    if (currentGame === "slot") {
+      renderSlotSetup(gameName);
+      return;
+    }
+    if (currentGame === "baccarat") {
+      renderBaccaratSetup(gameName);
+      return;
+    }
     gameBoard.innerHTML = `<p class="text-muted mb-0">${btn.textContent}을 선택했습니다. 베팅 후 게임 시작을 눌러주세요.</p>`;
     if (betCard) betCard.classList.remove("d-none");
     if (playCard) playCard.classList.add("d-none");
@@ -153,6 +266,7 @@ const resetSelection = () => {
   currentGame = null;
   updownInProgress = false;
   selectedGameTitle.textContent = "게임을 선택하세요";
+  setPlayTitle("플레이 화면");
   if (selectedGameDetail) selectedGameDetail.textContent = "";
   if (betCard) betCard.classList.add("d-none");
   if (playCard) playCard.classList.add("d-none");
@@ -162,13 +276,16 @@ const resetSelection = () => {
 const renderSlot = (detail, payload) => {
   const finalSymbols = detail.symbols || [];
   const anim = detail.anim || {};
+  const betValue = getBetAmount() || 1;
   gameBoard.innerHTML = `
+    ${slotControlsMarkup(betValue)}
     <div class="text-center">
       <div class="d-flex justify-content-center gap-3 mb-3" id="slotRow"></div>
       <p class="mb-1" id="slotStatus">스핀 중...</p>
       <p class="mb-0" id="slotResult"></p>
     </div>
   `;
+  attachInlinePlayHandler();
   const row = document.getElementById("slotRow");
   const statusEl = document.getElementById("slotStatus");
   const resultEl = document.getElementById("slotResult");
@@ -325,8 +442,11 @@ const renderBaccarat = (detail, payload) => {
   const playerValue = detail.player_value || 0;
   const bankerValue = detail.banker_value || 0;
   const outcome = detail.outcome || "";
+  const betValue = getBetAmount() || 1;
+  const choice = getBaccaratChoice();
 
   gameBoard.innerHTML = `
+    ${baccaratControlsMarkup(betValue, choice)}
     <div class="row g-3">
       <div class="col-md-6">
         <h6 id="playerTitle">PLAYER</h6>
@@ -340,6 +460,7 @@ const renderBaccarat = (detail, payload) => {
     <p class="mt-3" id="baccaratStatus">카드를 배분합니다...</p>
   `;
 
+  attachInlinePlayHandler();
   const playerPile = document.getElementById("playerPile");
   const bankerPile = document.getElementById("bankerPile");
   const statusEl = document.getElementById("baccaratStatus");
@@ -400,7 +521,7 @@ const playGame = async () => {
     gameBoard.innerHTML = "<p>게임을 선택하세요.</p>";
     return;
   }
-  const bet = Number(betAmountInput.value);
+  const bet = getBetAmount();
   if (!bet || bet < 1) {
     gameBoard.innerHTML = "<p>베팅 포인트를 입력하세요.</p>";
     return;
@@ -440,7 +561,7 @@ const playGame = async () => {
     return;
   }
   if (currentGame === "baccarat") {
-    body.bet_choice = betChoiceBaccarat.value;
+    body.bet_choice = getBaccaratChoice();
   }
 
   try {
