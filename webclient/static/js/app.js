@@ -71,10 +71,27 @@ const setPlayTitle = (text) => {
   if (playCardTitle) playCardTitle.textContent = text;
 };
 
+const setUpdownContent = (html) => {
+  const target = document.getElementById("updownContent");
+  if (target) target.innerHTML = html;
+  else gameBoard.innerHTML = html;
+};
+
 const attachInlinePlayHandler = () => {
   const inlineBtn = document.getElementById("inlinePlayBtn");
   if (inlineBtn) inlineBtn.onclick = () => playGame();
 };
+
+const updownControlsMarkup = (betValue = 1) => `
+  <div class="mb-3">
+    <label class="form-label" for="inlineBetAmount">베팅 포인트</label>
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      <input type="number" id="inlineBetAmount" class="form-control" style="max-width: 140px;" min="1" value="${betValue}" />
+      <button class="btn btn-primary" id="inlinePlayBtn">게임 시작</button>
+    </div>
+  </div>
+  <div id="updownContent" class="text-muted">베팅 후 게임 시작을 눌러주세요.</div>
+`;
 
 const slotControlsMarkup = (betValue = 1) => `
   <div class="mb-3">
@@ -94,7 +111,7 @@ const baccaratControlsMarkup = (betValue = 1, choice = "player") => `
         <input type="number" id="inlineBetAmount" class="form-control" min="1" value="${betValue}" />
       </div>
       <div class="col-md-4">
-        <label class="form-label" for="inlineBetChoiceBaccarat">베팅 선택</label>
+        <label class="form-label" for="inlineBetChoiceBaccarat">승리 예측</label>
         <select class="form-select" id="inlineBetChoiceBaccarat">
           <option value="player" ${choice === "player" ? "selected" : ""}>Player</option>
           <option value="banker" ${choice === "banker" ? "selected" : ""}>Banker</option>
@@ -151,8 +168,17 @@ const renderBaccaratSetup = (gameName) => {
         </div>
       </div>
     </div>
-    <p class="mt-3 text-muted mb-0">카드 배분 후 ? 가 나타납니다.</p>
+    <p class="mt-3 text-muted mb-0">베팅 후 게임 시작을 눌러주세요.</p>
   `;
+  attachInlinePlayHandler();
+};
+
+const renderUpdownSetup = (gameName) => {
+  if (betCard) betCard.classList.add("d-none");
+  if (playCard) playCard.classList.remove("d-none");
+  setPlayTitle(gameName || "UP&DOWN");
+  const defaultBet = betAmountInput ? betAmountInput.value : 1;
+  gameBoard.innerHTML = updownControlsMarkup(defaultBet);
   attachInlinePlayHandler();
 };
 
@@ -248,14 +274,9 @@ gameSelectButtons.forEach((btn) => {
         selectedGameDetail.textContent = detailMap[currentGame] || "";
       }
     }
-    if (currentGame === "slot") {
-      renderSlotSetup(gameName);
-      return;
-    }
-    if (currentGame === "baccarat") {
-      renderBaccaratSetup(gameName);
-      return;
-    }
+    if (currentGame === "slot") return renderSlotSetup(gameName);
+    if (currentGame === "baccarat") return renderBaccaratSetup(gameName);
+    if (currentGame === "updown") return renderUpdownSetup(gameName);
     gameBoard.innerHTML = `<p class="text-muted mb-0">${btn.textContent}을 선택했습니다. 베팅 후 게임 시작을 눌러주세요.</p>`;
     if (betCard) betCard.classList.remove("d-none");
     if (playCard) playCard.classList.add("d-none");
@@ -416,14 +437,14 @@ const renderUpdown = (detail, payload) => {
       return `<tr><td>${g}</td><td>${hint}</td></tr>`;
     })
     .join("");
-  gameBoard.innerHTML = `
+  setUpdownContent(`
     <p>정답: ${target}</p>
     <table class="table table-sm">
       <thead><tr><th>추측</th><th>결과</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <p class="mb-0">배당 x${payload.payout_multiplier.toFixed(2)} / 증감 ${payload.delta} pt / 잔액 ${payload.balance} pt</p>
-  `;
+  `);
 };
 
 const renderUpdownPending = (detail) => {
@@ -544,7 +565,7 @@ const playGame = async () => {
       const remainingText = typeof startData.remaining === "number" ? `${startData.remaining}회` : "계산 중...";
       updownInProgress = true;
       if (playCard) playCard.classList.remove("d-none");
-      gameBoard.innerHTML = `
+      setUpdownContent(`
         <div class="mb-2">숫자를 입력하고 판정 버튼을 눌러주세요.</div>
         <div class="input-group mb-2" style="max-width:320px;">
           <input type="number" class="form-control" id="guessInputDynamic" min="1" max="100" placeholder="1~100" />
@@ -552,7 +573,7 @@ const playGame = async () => {
         </div>
         <div id="updownStatusDynamic" class="text-muted">게임 시작! 남은 시도 ${remainingText}</div>
         <div id="updownTableWrapper" class="mt-3"></div>
-      `;
+      `);
       const submitBtn = document.getElementById("submitGuessDynamic");
       submitBtn.addEventListener("click", submitUpdownGuess);
     } catch (error) {
