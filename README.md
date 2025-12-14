@@ -9,6 +9,7 @@ uvicorn server.main:app --reload --host 0.0.0.0 --port 8000
 # 토큰 서명 키: TOKEN_SECRET (기본 dev-secret)
 ```
 - 관리자 페이지: `http://localhost:8000/admin` (또는 `http://<서버IP>:8000/admin`)
+- 게임 설정 페이지: `http://localhost:8000/admin/settings` (관리자 비밀번호 입력 후 접근)
 - 유저 페이지: `http://localhost:8000/game` (또는 `http://<서버IP>:8000/game`)
 
 ## 사용자 흐름

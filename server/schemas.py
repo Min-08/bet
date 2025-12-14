@@ -91,6 +91,47 @@ class GameSettingItem(BaseModel):
     assist_enabled: bool
     assist_max_bet: int
     player_advantage_percent: float
+    min_bet: int
+    max_bet: int
+    maintenance_mode: bool
+    slot_payout_triple_seven: float
+    slot_payout_triple_same: float
+    slot_payout_double_same: float
+    baccarat_payout_player: float
+    baccarat_payout_banker: float
+    baccarat_payout_tie: float
+    jackpot_enabled: bool
+    jackpot_contrib_percent: float
+    jackpot_trigger_percent: float
+    jackpot_pool: float
+    updown_payout1: float
+    updown_payout2: float
+    updown_payout3: float
+    updown_payout4: float
+    updown_payout5: float
+    updown_payout6: float
+    updown_payout7: float
+    updown_payout8: float
+    updown_payout9: float
+    updown_payout10: float
+    slot_anim_step_ms: int
+    slot_anim_steps1: int
+    slot_anim_steps2: int
+    slot_anim_steps3: int
+    slot_anim_stagger_ms: int
+    slot_anim_extra_prob: float
+    slot_anim_extra_pct_min: float
+    slot_anim_extra_pct_max: float
+    slot_anim_smooth_strength: float
+    slot_anim_match_prob: float
+    slot_anim_match_min_pct: float
+    slot_anim_match_max_pct: float
+    slot_anim_match7_min_pct: float
+    slot_anim_match7_max_pct: float
+    slot_anim_extra25_prob: float
+    slot_anim_extra25_pct: float
+    slot_anim_smooth_threshold: float
+    bias_rules: List[dict] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,6 +152,13 @@ class TransactionItem(BaseModel):
 
 class GameSettingsUpdate(BaseModel):
     settings: List[GameSettingItem]
+
+
+class GlobalSettingItem(BaseModel):
+    min_bet: int
+    max_bet: int
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class GameLogItem(BaseModel):

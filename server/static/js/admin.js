@@ -11,14 +11,24 @@ const refreshLogsBtn = document.getElementById("refreshLogs");
 const gameLogList = document.getElementById("gameLogList");
 const gameLogStatus = document.getElementById("gameLogStatus");
 let gameLogTimer = null;
+const ADMIN_SECRET_KEY = "adminSecretCache";
+
+const getStoredSecret = () => sessionStorage.getItem(ADMIN_SECRET_KEY) || "";
+const setStoredSecret = (secret) => sessionStorage.setItem(ADMIN_SECRET_KEY, secret || "");
+const clearStoredSecret = () => sessionStorage.removeItem(ADMIN_SECRET_KEY);
 
 const getAdminHeader = () => ({
-  "admin-secret": adminSecretInput.value || "",
+  "admin-secret": adminSecretInput.value || getStoredSecret() || "",
 });
+
+const prefillSecret = () => {
+  const saved = getStoredSecret();
+  if (saved && adminSecretInput) adminSecretInput.value = saved;
+};
 
 const showAdminFeedback = (msg, variant = "info") => {
   if (!adminFeedback) return;
-  adminFeedback.classList.remove("alert-info", "alert-success", "alert-danger");
+  adminFeedback.classList.remove("alert-info", "alert-success", "alert-danger", "d-none");
   adminFeedback.classList.add(`alert-${variant}`);
   adminFeedback.textContent = msg;
 };
@@ -314,6 +324,7 @@ if (adminAuthBtn) {
       showAdminFeedback("관리자 비밀번호를 입력하세요.", "danger");
       return;
     }
+    setStoredSecret(secret);
     Promise.all([fetchUsers(), fetchGameLogs()])
       .then(() => {
         startGameLogPolling();
@@ -324,3 +335,6 @@ if (adminAuthBtn) {
 }
 
 // 기본 자동 호출 제거 (비밀번호 입력 후 확인 버튼으로 갱신)
+
+prefillSecret();
+window.addEventListener("beforeunload", clearStoredSecret);

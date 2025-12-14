@@ -16,8 +16,8 @@
     <div class="overlay"></div>
     <div class="container py-5 position-relative">
       <header class="text-center mb-4">
-        <h1>Virtual Probability Simulation</h1>
-        <p class="lead">계정 기반 가상 포인트 시뮬레이터</p>
+        <h1 class="fw-bold">Virtual CASINO Simulation</h1>
+        <p class="lead fw-bold">가상 카지노 시뮬레이션</p>
       </header>
 
       <div id="authCard" class="card shadow text-dark mb-4">
@@ -62,47 +62,54 @@
         </div>
 
         <div class="row g-4 mb-3" id="gameChooser">
-          <div class="col-md-4">
-            <div class="card shadow-sm h-100">
+          <div class="col-md-4 game-col" data-game="updown">
+            <div class="card shadow-sm h-100 game-card" data-game="updown">
               <div class="card-body">
-                <h5 class="card-title">업다운</h5>
-                <p class="text-muted">숫자 추측 5회, 배당 7~2x</p>
+                <h5 class="card-title fw-bold">UP&DOWN</h5>
+                <div class="icon-badge">
+                  <img src="/game_static/img/updown.svg" alt="UpDown Icon" />
+                </div>
+                <p class="text-muted mb-2">&nbsp;</p>
                 <button class="btn btn-outline-primary w-100 game-select" data-game="updown">선택</button>
               </div>
             </div>
           </div>
-          <div class="col-md-4">
-            <div class="card shadow-sm h-100">
+          <div class="col-md-4 game-col" data-game="slot">
+            <div class="card shadow-sm h-100 game-card" data-game="slot">
               <div class="card-body">
-                <h5 class="card-title">슬롯 머신</h5>
-                <p class="text-muted">3릴, 777=10x, 같은심볼=5x/1.5x</p>
+                <h5 class="card-title fw-bold">SLOT MACHINE</h5>
+                <div class="icon-badge">
+                  <img src="/game_static/img/slot_777.svg" alt="Slot 777 Icon" />
+                </div>
+                <p class="text-muted mb-2">&nbsp;</p>
                 <button class="btn btn-outline-primary w-100 game-select" data-game="slot">선택</button>
               </div>
             </div>
           </div>
-          <div class="col-md-4">
-            <div class="card shadow-sm h-100">
+          <div class="col-md-4 game-col" data-game="baccarat">
+              <div class="card shadow-sm h-100 game-card" data-game="baccarat">
               <div class="card-body">
-                <h5 class="card-title">바카라</h5>
-                <p class="text-muted">Player/Banker/Tie 베팅</p>
+                <h5 class="card-title fw-bold">BACCARAT</h5>
+                <div class="icon-badge">
+                  <img src="/game_static/img/spc.svg" alt="Baccarat Icon" />
+                </div>
+                <p class="text-muted mb-2">&nbsp;</p>
                 <button class="btn btn-outline-primary w-100 game-select" data-game="baccarat">선택</button>
               </div>
             </div>
           </div>
         </div>
 
-        <div class="card shadow text-dark">
+        <div class="card shadow text-dark d-none" id="betCard">
           <div class="card-body">
             <h5 class="card-title" id="selectedGameTitle">게임을 선택하세요</h5>
+            <p class="text-muted small mb-3" id="selectedGameDetail"></p>
             <div class="row g-3 align-items-end">
-              <div class="col-md-3">
+              <div class="col-md-4">
                 <label class="form-label">베팅 포인트</label>
                 <input type="number" id="betAmount" class="form-control" min="1" value="1" />
               </div>
-              <div class="col-md-5" id="updownExtra" style="display:none;">
-                <!-- 업다운 추측 입력 UI는 게임 시작 시 플레이 화면에 렌더링 -->
-              </div>
-              <div class="col-md-3" id="baccaratExtra" style="display:none;">
+              <div class="col-md-4 d-none" id="baccaratExtra">
                 <label class="form-label">베팅 선택</label>
                 <select class="form-select" id="betChoiceBaccarat">
                   <option value="player">Player</option>
@@ -110,14 +117,14 @@
                   <option value="tie">Tie</option>
                 </select>
               </div>
-              <div class="col-md-2 d-grid">
-                <button class="btn btn-primary" id="playSelected">게임 시작</button>
+              <div class="col-auto d-grid">
+                <button class="btn btn-primary btn-wide" id="playSelected">게임 시작</button>
               </div>
             </div>
           </div>
         </div>
 
-        <div class="card shadow text-dark mt-4">
+        <div class="card shadow text-dark mt-4 d-none" id="playCard">
           <div class="card-body">
             <h5 class="card-title">플레이 화면</h5>
             <div id="gameBoard" class="game-board">

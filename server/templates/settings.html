@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>게임 세부 설정</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="/admin_static/css/admin.css" />
+  </head>
+  <body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+      <div class="container">
+        <span class="navbar-brand">Game Settings</span>
+        <a class="nav-link text-white-50" href="/admin">← 관리자 메인</a>
+      </div>
+    </nav>
+
+    <main class="container pb-5">
+      <section class="card shadow-sm mb-4">
+        <div class="card-body">
+          <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label" for="adminSecret">관리자 비밀번호</label>
+              <input
+                type="password"
+                id="adminSecret"
+                class="form-control"
+                placeholder="환경변수 ADMIN_SECRET"
+              />
+            </div>
+            <div class="col-md-2 d-grid">
+              <button id="adminAuthBtn" class="btn btn-secondary">
+                확인
+              </button>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">상태</label>
+              <div id="adminFeedback" class="alert alert-info mb-0 d-none"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card shadow-sm mt-4">
+        <div class="card-header">
+          <h6 class="mb-0">도움말 · 설정 가이드 (요약)</h6>
+        </div>
+        <div class="card-body">
+          <p class="mb-2 small text-muted">주요 설정을 빠르게 이해할 수 있도록 필드/라벨별 설명을 정리했습니다.</p>
+          <h6 class="mt-3">전역/공통</h6>
+          <ul class="mb-3">
+            <li><strong>모든 게임 최소/최대 베팅 한도</strong>: 전역 한도. 게임별 한도와 교차 적용되어 더 엄격한 값 사용.</li>
+            <li><strong>게임 상태</strong>: 꺼짐=운영, 켜짐=중지.</li>
+          </ul>
+          <h6 class="mt-3">업다운</h6>
+          <ul class="mb-3">
+            <li><strong>1~10번째 시도 적중 배당</strong>: 각 시도에서 맞췄을 때의 배당 배수.</li>
+          </ul>
+          <h6 class="mt-3">바카라</h6>
+          <ul class="mb-3">
+            <li><strong>플레이어/뱅커/타이 적중 배당</strong>: 선택별 배당 배수.</li>
+          </ul>
+          <h6 class="mt-3">슬롯 배당·애니메이션</h6>
+          <ul class="mb-3">
+            <li><strong>777 / 같은 심볼 3·2개 적중 배당</strong>: 당첨 배수.</li>
+            <li><strong>숫자 변경 속도(ms) / 릴 시작 시간 차(ms)</strong>: 릴 속도·스타트 시차.</li>
+            <li><strong>1/2/3번 스텝수</strong>: 각 릴이 도는 스텝 수.</li>
+            <li><strong>랜덤 추가 지연 확률·범위(%)</strong>: 기본 가변 지연.</li>
+            <li><strong>1,2번 릴 매치 시 3번 지연 확률·범위(%, 7 전용 범위)</strong>: 매치 기반 지연.</li>
+            <li><strong>고정 지연 확률·비율(%)</strong>: 확률적으로 고정 지연 추가.</li>
+            <li><strong>감속 연출 강도/발동 기준(%)</strong>: 부드러운 정지 정도.</li>
+            <li><strong>잭팟: 활성화/적립 비율/발동 확률</strong>: 잭팟 적립·트리거 설정.</li>
+          </ul>
+          <h6 class="mt-3">결과 보정 규칙(JSON)</h6>
+          <ul class="mb-3">
+            <li><strong>id/name</strong>: 규칙 식별자(임의 문자열).</li>
+            <li><strong>direction</strong>: house=하우스 우세(승→패), player=플레이어 우세(패→승).</li>
+            <li><strong>probability</strong>: 0~1 발동 확률, <strong>priority</strong>: 큰 값부터 평가.</li>
+            <li><strong>bet_min / bet_max</strong>: 해당 베팅 금액 범위에서만 적용.</li>
+            <li><strong>bet_choices</strong>: 특정 선택(예: ["player","banker","tie"])에만 적용.</li>
+            <li><strong>streak_win_at_least / streak_lose_at_least</strong>: 연속 승/패 횟수 조건.</li>
+            <li><strong>target_rtp</strong>: 최근 RTP(0~1)가 기준보다 높/낮을 때만 발동(방향에 따라).</li>
+            <li><strong>cooldown_sec</strong>: 한 번 적용 후 대기 시간(초).</li>
+            <li><strong>win_multiplier</strong>: player 보정 시 최소 배당 보정.</li>
+            <li><strong>games</strong>: ["slot","baccarat","updown"] 중 적용 대상. 비우면 전부.</li>
+            <li><strong>enabled</strong>: false면 규칙 무시.</li>
+            <li><strong>preset 버튼</strong>: 방어/기본/공격형 예시를 불러옵니다.</li>
+          </ul>
+          <p class="mb-2 small text-muted">예시 규칙:</p>
+<pre class="bg-light p-2 border rounded small mb-0">[
+  {"id":"house-high","direction":"house","bet_min":1000,"probability":0.2,"priority":5},
+  {"id":"streak-protect","direction":"house","streak_win_at_least":3,"probability":0.3,"cooldown_sec":30},
+  {"id":"help-small","direction":"player","bet_max":200,"probability":0.15,"win_multiplier":1.2}
+]</pre>
+          <p class="small text-muted mt-2">가장 간단한 규칙: {"direction":"house","probability":0.2} (모든 게임에서 20% 확률로 하우스 우세). 작은 베팅만 보호: {"direction":"player","probability":0.1,"bet_max":200}. 필요 필드만 적으면 됩니다.</p>
+        </div>
+      </section>
+
+      <section class="card shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">전역 설정</h5>
+          <button id="saveGlobalSettings" class="btn btn-outline-primary btn-sm" disabled>
+            전역 설정 저장
+          </button>
+        </div>
+        <div class="card-body row g-3 align-items-end" id="globalSettingsForm">
+          <div class="col-md-3">
+            <label class="form-label" for="globalMinBet">모든 게임 최소 베팅 한도</label>
+            <input type="number" id="globalMinBet" class="form-control" value="1" min="1" />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label" for="globalMaxBet">모든 게임 최대 베팅 한도</label>
+            <input type="number" id="globalMaxBet" class="form-control" value="10000" min="1" />
+          </div>
+          <div class="col-md-12">
+            <div id="globalSettingsFeedback" class="alert alert-info d-none mb-0" role="alert">
+              비밀번호 인증 후 불러오세요.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">게임 세부 설정</h5>
+          <button id="saveGameSettings" class="btn btn-primary btn-sm" disabled>
+            설정 저장
+          </button>
+        </div>
+        <div class="card-body">
+          <div id="gameSettingsContainer" class="row g-4"></div>
+          <div
+            id="gameSettingsFeedback"
+            class="alert alert-info d-none mt-3"
+            role="alert"
+          >
+            비밀번호 인증 후 설정을 불러오세요.
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+      crossorigin="anonymous"
+    ></script>
+    <script src="/admin_static/js/settings.js"></script>
+  </body>
+</html>

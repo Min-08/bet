@@ -38,12 +38,15 @@ const logoutBtn = document.getElementById("logoutBtn");
 const refreshBalanceBtn = document.getElementById("refreshBalance");
 const gameSelectButtons = document.querySelectorAll(".game-select");
 const selectedGameTitle = document.getElementById("selectedGameTitle");
-const updownExtra = document.getElementById("updownExtra");
 const baccaratExtra = document.getElementById("baccaratExtra");
 const betAmountInput = document.getElementById("betAmount");
 const betChoiceBaccarat = document.getElementById("betChoiceBaccarat");
 const playSelectedBtn = document.getElementById("playSelected");
 const gameBoard = document.getElementById("gameBoard");
+const betCard = document.getElementById("betCard");
+const playCard = document.getElementById("playCard");
+const selectedGameDetail = document.getElementById("selectedGameDetail");
+const gameCols = document.querySelectorAll(".game-col");
 
 let currentGame = null;
 let updownInProgress = false;
@@ -65,16 +68,19 @@ const updateMe = async () => {
   balanceLabel.textContent = data.balance;
 };
 
-const requireLoginUI = async () => {
-  if (!auth.token) return;
+const requireLoginUI = async (showError = false) => {
+  if (!auth.token) return false;
   try {
     await updateMe();
     authCard.classList.add("d-none");
     appArea.classList.remove("d-none");
+    return true;
   } catch (e) {
+    if (showError) showAlert(loginFeedback, e.message || "세션 오류로 로그인에 실패했습니다.", "danger");
     auth.clear();
     authCard.classList.remove("d-none");
     appArea.classList.add("d-none");
+    return false;
   }
 };
 
@@ -88,11 +94,16 @@ loginForm.addEventListener("submit", async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, pin }),
     });
-    if (!res.ok) throw new Error("로그인 실패: 이름/PIN을 확인하세요.");
+    if (!res.ok) {
+      const txt = await res.text();
+      const msg = txt || `로그인 실패 (HTTP ${res.status})`;
+      throw new Error(msg);
+    }
     const data = await res.json();
     auth.save(data.token);
     hideAlert(loginFeedback);
-    await requireLoginUI();
+    const ok = await requireLoginUI(true);
+    if (!ok) throw new Error("로그인 세션을 불러오지 못했습니다.");
   } catch (err) {
     showAlert(loginFeedback, err.message, "danger");
   }
@@ -102,6 +113,7 @@ logoutBtn.addEventListener("click", () => {
   auth.clear();
   appArea.classList.add("d-none");
   authCard.classList.remove("d-none");
+  resetSelection();
 });
 
 refreshBalanceBtn.addEventListener("click", () => {
@@ -112,21 +124,47 @@ gameSelectButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
     currentGame = btn.dataset.game;
     updownInProgress = false;
-    selectedGameTitle.textContent = `선택된 게임: ${btn.textContent}`;
-    updownExtra.style.display = currentGame === "updown" ? "block" : "none";
-    baccaratExtra.style.display = currentGame === "baccarat" ? "block" : "none";
+    const card = btn.closest(".card");
+    const titleEl = card ? card.querySelector(".card-title") : null;
+    const descEl = card ? card.querySelector("p.text-muted") : null;
+    const gameName = titleEl ? titleEl.textContent.trim() : btn.textContent.trim();
+    selectedGameTitle.textContent = gameName;
+    if (baccaratExtra)
+      baccaratExtra.classList.toggle("d-none", currentGame !== "baccarat");
+    if (selectedGameDetail) {
+      if (descEl && descEl.textContent.trim()) {
+        selectedGameDetail.textContent = descEl.textContent.trim();
+      } else {
+        const detailMap = {
+          updown: "1~100 숫자 맞히기, 최대 10회 시도",
+          slot: "3릴 슬롯, 777=10x / 같은 심볼=5x/1.5x",
+          baccarat: "플레이어/뱅커/타이 중 선택",
+        };
+        selectedGameDetail.textContent = detailMap[currentGame] || "";
+      }
+    }
     gameBoard.innerHTML = `<p class="text-muted mb-0">${btn.textContent}을 선택했습니다. 베팅 후 게임 시작을 눌러주세요.</p>`;
+    if (betCard) betCard.classList.remove("d-none");
+    if (playCard) playCard.classList.add("d-none");
   });
 });
 
+const resetSelection = () => {
+  currentGame = null;
+  updownInProgress = false;
+  selectedGameTitle.textContent = "게임을 선택하세요";
+  if (selectedGameDetail) selectedGameDetail.textContent = "";
+  if (betCard) betCard.classList.add("d-none");
+  if (playCard) playCard.classList.add("d-none");
+  gameBoard.innerHTML = `<p class="text-muted mb-0">게임을 선택하고 시작하면 여기에서 진행됩니다.</p>`;
+};
+
 const renderSlot = (detail, payload) => {
   const finalSymbols = detail.symbols || [];
-  const slots = ["?", "?", "?"]; // initial placeholder
+  const anim = detail.anim || {};
   gameBoard.innerHTML = `
     <div class="text-center">
-      <div class="d-flex justify-content-center gap-3 mb-3" id="slotRow">
-        ${slots.map((s, idx) => `<div class="slot-symbol" data-slot-index="${idx}">${s}</div>`).join("")}
-      </div>
+      <div class="d-flex justify-content-center gap-3 mb-3" id="slotRow"></div>
       <p class="mb-1" id="slotStatus">스핀 중...</p>
       <p class="mb-0" id="slotResult"></p>
     </div>
@@ -135,24 +173,118 @@ const renderSlot = (detail, payload) => {
   const statusEl = document.getElementById("slotStatus");
   const resultEl = document.getElementById("slotResult");
   const allSymbols = ["A", "B", "C", "D", "7"];
-  let spinIndex = 0;
-  let ticks = 0;
-  const spin = setInterval(() => {
-    Array.from(row.children).forEach((node) => {
-      const symbol = allSymbols[(spinIndex + Number(node.dataset?.slotIndex || 0)) % allSymbols.length];
-      node.textContent = symbol;
-    });
-    spinIndex = (spinIndex + 1) % allSymbols.length;
-    ticks += 1;
-    if (ticks > 15) {
-      clearInterval(spin);
-      Array.from(row.children).forEach((node, idx) => {
-        node.textContent = finalSymbols[idx] || "?";
-      });
-      statusEl.textContent = `결과: ${payload.result} / 배당 x${payload.payout_multiplier.toFixed(2)}`;
-      resultEl.textContent = `증감: ${payload.delta} pt / 잔액: ${payload.balance} pt`;
+  const cellHeight = 60;
+  const baseSteps = [
+    anim.steps1 || 24,
+    anim.steps2 || 34,
+    anim.steps3 || 48,
+  ];
+  let finished = 0;
+  const stepMs = anim.step_ms || 60;
+  const startStagger = [
+    anim.stagger_ms || 0,
+    anim.stagger_ms || 0,
+    anim.stagger_ms || 0,
+  ];
+  const reelSteps = [...baseSteps];
+  let smoothStopThird = false;
+  let smoothStopFactor = anim.smooth_strength || 1;
+  const matchProb = anim.match_prob ?? 1.0;
+  const matchMin = anim.match_min_pct ?? 0.1;
+  const matchMax = anim.match_max_pct ?? 0.4;
+  const match7Min = anim.match7_min_pct ?? 0.3;
+  const match7Max = anim.match7_max_pct ?? 0.6;
+  const extraProb = anim.extra_prob ?? 0.2;
+  const extraMin = anim.extra_pct_min ?? 0.0;
+  const extraMax = anim.extra_pct_max ?? 0.1;
+  const extra25Prob = anim.extra25_prob ?? 0.15;
+  const extra25Pct = anim.extra25_pct ?? 0.25;
+  const smoothThreshold = anim.smooth_threshold ?? 0.25;
+
+  if (finalSymbols[0] && finalSymbols[1] && finalSymbols[0] === finalSymbols[1]) {
+    const sameSymbol = finalSymbols[0];
+    if (Math.random() < matchProb) {
+      const extra =
+        sameSymbol === "7"
+          ? match7Min + Math.random() * (match7Max - match7Min)
+          : matchMin + Math.random() * (matchMax - matchMin);
+      const factor = 1 + extra;
+      reelSteps[2] = Math.max(reelSteps[2], Math.round(baseSteps[2] * factor));
+      if (extra >= smoothThreshold) {
+        smoothStopThird = true;
+      }
     }
-  }, 80);
+  }
+  if (Math.random() < extraProb) {
+    const factor = 1 + (extraMin + Math.random() * (extraMax - extraMin));
+    reelSteps[2] = Math.max(reelSteps[2], Math.round(baseSteps[2] * factor));
+  }
+  if (Math.random() < extra25Prob) {
+    const factor = 1 + extra25Pct;
+    reelSteps[2] = Math.max(reelSteps[2], Math.round(baseSteps[2] * factor));
+    smoothStopThird = true;
+  }
+
+  const makeReel = (idx) => {
+    const reel = document.createElement("div");
+    reel.className = "slot-reel";
+    reel.dataset.slotIndex = idx;
+    reel.style.cssText =
+      "width:60px;height:60px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;background:#f1f3f5;margin:0 10px;box-shadow:inset 0 2px 6px rgba(0,0,0,0.15);overflow:hidden;position:relative;";
+    const strip = document.createElement("div");
+    strip.className = "slot-strip";
+    strip.style.cssText =
+      "position:absolute;top:0;left:0;right:0;transition:transform 0.12s ease-out;";
+    reel.appendChild(strip);
+    row.appendChild(reel);
+    return strip;
+  };
+
+  const spinReel = (strip, totalSteps, smoothStop = false) => {
+    const fillers = [];
+    for (let i = 0; i < totalSteps; i += 1) {
+      fillers.push(allSymbols[i % allSymbols.length]);
+    }
+    const finalSymbol =
+      finalSymbols[Number(strip.parentElement.dataset.slotIndex)] ||
+      allSymbols[Math.floor(Math.random() * allSymbols.length)];
+    const seq = [finalSymbol, ...fillers]; // 마지막에 최종 심볼이 내려오도록 앞에 배치
+    strip.innerHTML = seq.map((s) => `<div class="slot-cell" style="height:${cellHeight}px;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:700;">${s}</div>`).join("");
+    let current = 0;
+    const total = seq.length - 1;
+    // 시작은 리스트 맨 끝(필러)에서 최종 심볼이 아래로 내려오도록 위쪽에 올려둔다
+    strip.style.transform = `translateY(${-total * cellHeight}px)`;
+
+    const step = () => {
+      const progress = total === 0 ? 1 : current / total;
+      const easeFactor = smoothStop
+        ? 1 + (Math.exp(Math.min(progress, 1) * 2) - 1) / 3 // 완만하게 늘어나는 지연
+        : 1;
+      const transDur = smoothStop ? 0.12 * (1 + progress * 1.2) * smoothStopFactor : 0.12;
+      strip.style.transition = `transform ${transDur.toFixed(3)}s cubic-bezier(0.16, 1, 0.3, 1)`;
+      const offset = -(total - current) * cellHeight;
+      strip.style.transform = `translateY(${offset}px)`;
+      if (current >= total) {
+        finished += 1;
+        if (finished === 3) {
+          statusEl.textContent = `결과: ${payload.result} / 배당 x${payload.payout_multiplier.toFixed(2)}`;
+          resultEl.textContent = `증감: ${payload.delta} pt / 잔액: ${payload.balance} pt`;
+        }
+        return;
+      }
+      current += 1;
+      const delay = stepMs * easeFactor * (smoothStop ? smoothStopFactor : 1);
+      setTimeout(step, delay);
+    };
+
+    setTimeout(step, stepMs);
+  };
+
+  const strips = [makeReel(0), makeReel(1), makeReel(2)];
+  strips.forEach((strip, idx) => {
+    const smooth = idx === 2 && smoothStopThird;
+    setTimeout(() => spinReel(strip, reelSteps[idx], smooth), startStagger[idx]);
+  });
 };
 
 const renderUpdown = (detail, payload) => {
@@ -178,7 +310,8 @@ const renderUpdown = (detail, payload) => {
 };
 
 const renderUpdownPending = (detail) => {
-  const remaining = 5 - (detail.attempts || 0);
+  const maxAttempts = detail.max_attempts || (detail.payouts ? detail.payouts.length : 5);
+  const remaining = maxAttempts - (detail.attempts || 0);
   const hint = detail.hint || "?";
   const statusEl = document.getElementById("updownStatusDynamic");
   if (statusEl) {
@@ -286,14 +419,17 @@ const playGame = async () => {
         const msg = await res.text();
         throw new Error(msg || "게임 시작에 실패했습니다.");
       }
+      const startData = await res.json();
+      const remainingText = typeof startData.remaining === "number" ? `${startData.remaining}회` : "계산 중...";
       updownInProgress = true;
+      if (playCard) playCard.classList.remove("d-none");
       gameBoard.innerHTML = `
         <div class="mb-2">숫자를 입력하고 판정 버튼을 눌러주세요.</div>
         <div class="input-group mb-2" style="max-width:320px;">
           <input type="number" class="form-control" id="guessInputDynamic" min="1" max="100" placeholder="1~100" />
           <button class="btn btn-outline-primary" id="submitGuessDynamic" type="button">판정</button>
         </div>
-        <div id="updownStatusDynamic" class="text-muted">게임 시작! 남은 시도 5회</div>
+        <div id="updownStatusDynamic" class="text-muted">게임 시작! 남은 시도 ${remainingText}</div>
         <div id="updownTableWrapper" class="mt-3"></div>
       `;
       const submitBtn = document.getElementById("submitGuessDynamic");
@@ -319,6 +455,7 @@ const playGame = async () => {
     }
     const data = await res.json();
     balanceLabel.textContent = data.balance;
+    if (playCard) playCard.classList.remove("d-none");
     if (currentGame === "updown") renderUpdown(data.detail || {}, data);
     else if (currentGame === "slot") renderSlot(data.detail || {}, data);
     else renderBaccarat(data.detail || {}, data);

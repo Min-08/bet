@@ -17,6 +17,7 @@
       <div class="container">
         <span class="navbar-brand">Admin Console</span>
         <span class="text-white-50">계정/포인트 관리</span>
+        <a class="nav-link text-white-50" href="/admin/settings">게임 설정</a>
       </div>
     </nav>
 
@@ -40,9 +41,7 @@
             </div>
             <div class="col-md-4">
               <label class="form-label">상태</label>
-              <div id="adminFeedback" class="alert alert-info mb-0">
-                비밀번호를 입력하세요.
-              </div>
+              <div id="adminFeedback" class="alert alert-info mb-0 d-none"></div>
             </div>
           </div>
         </div>
@@ -106,147 +105,6 @@
         </div>
       </section>
 
-      <section class="card shadow-sm mb-4" id="gameSettingsPanel">
-        <div class="card-header">
-          <button
-            class="btn btn-outline-primary"
-            type="button"
-            data-bs-toggle="collapse"
-            data-bs-target="#gameSettingsCollapse"
-            aria-expanded="false"
-            aria-controls="gameSettingsCollapse"
-          >
-            게임 세부 설정
-          </button>
-        </div>
-        <div class="card-body border-top">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0">게임 로그</h6>
-            <button id="refreshLogs" class="btn btn-outline-secondary btn-sm">
-              새로고침
-            </button>
-          </div>
-          <div id="gameLogStatus" class="text-muted small mb-2">
-            관리자 비밀번호 입력 후 확인을 눌러주세요.
-          </div>
-          <div id="gameLogList" class="game-log-list border rounded p-2 bg-white">
-            <div class="text-muted small">로그가 여기에 표시됩니다.</div>
-          </div>
-        </div>
-        <div class="collapse" id="gameSettingsCollapse">
-          <div class="card-body">
-            <p class="mb-2 text-muted">카지노 리스크 보정</p>
-            <div class="row g-4 mb-3" id="gameSettingsContainer">
-              {% for setting in game_settings %}
-              <div class="col-md-4">
-                <div class="border rounded p-3 h-100">
-                  <h6 class="mb-3">
-                    {{ game_labels.get(setting.game_id, setting.game_id) if game_labels else setting.game_id }}
-                  </h6>
-                  <div class="form-check form-switch mb-3">
-                    <input
-                      class="form-check-input game-setting-toggle"
-                      type="checkbox"
-                      id="risk_{{ setting.game_id }}"
-                      data-game-id="{{ setting.game_id }}"
-                      {% if setting.risk_enabled %}checked{% endif %}
-                    />
-                    <label class="form-check-label" for="risk_{{ setting.game_id }}">
-                      리스크 보정 활성화
-                    </label>
-                  </div>
-                  <div class="mb-3">
-                    <label class="form-label" for="threshold_{{ setting.game_id }}">리스크 판 최소 베팅</label>
-                    <input
-                      type="number"
-                      class="form-control game-setting-threshold"
-                      id="threshold_{{ setting.game_id }}"
-                      data-game-id="{{ setting.game_id }}"
-                      value="{{ setting.risk_threshold }}"
-                      min="1"
-                    />
-                  </div>
-                  <div>
-                    <label class="form-label" for="advantage_{{ setting.game_id }}">카지노 우세(%)</label>
-                    <input
-                      type="number"
-                      class="form-control game-setting-advantage"
-                      id="advantage_{{ setting.game_id }}"
-                      data-game-id="{{ setting.game_id }}"
-                      value="{{ "%.1f"|format(setting.casino_advantage_percent) }}"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                    />
-                    <div class="form-text">리스크 판에서 적용</div>
-                  </div>
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-            <hr />
-            <p class="mb-2 text-muted">유저 확률 보정</p>
-            <div class="row g-4 mb-3" id="assistSettingsContainer">
-              {% for setting in game_settings %}
-              <div class="col-md-4">
-                <div class="border rounded p-3 h-100">
-                  <h6 class="mb-3">
-                    {{ game_labels.get(setting.game_id, setting.game_id) if game_labels else setting.game_id }}
-                  </h6>
-                  <div class="form-check form-switch mb-3">
-                    <input
-                      class="form-check-input game-setting-assist-toggle"
-                      type="checkbox"
-                      id="assist_{{ setting.game_id }}"
-                      data-game-id="{{ setting.game_id }}"
-                      {% if setting.assist_enabled %}checked{% endif %}
-                    />
-                    <label class="form-check-label" for="assist_{{ setting.game_id }}">
-                      확률 보정 활성화 (플레이어 우세)
-                    </label>
-                  </div>
-                  <div class="mb-3">
-                    <label class="form-label" for="assist_threshold_{{ setting.game_id }}">확률 보정판 최대 베팅</label>
-                    <input
-                      type="number"
-                      class="form-control game-setting-assist-threshold"
-                      id="assist_threshold_{{ setting.game_id }}"
-                      data-game-id="{{ setting.game_id }}"
-                      value="{{ setting.assist_max_bet }}"
-                      min="1"
-                    />
-                  </div>
-                  <div>
-                    <label class="form-label" for="assist_advantage_{{ setting.game_id }}">플레이어 우세(%)</label>
-                    <input
-                      type="number"
-                      class="form-control game-setting-assist-advantage"
-                      id="assist_advantage_{{ setting.game_id }}"
-                      data-game-id="{{ setting.game_id }}"
-                      value="{{ "%.1f"|format(setting.player_advantage_percent) }}"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                    />
-                    <div class="form-text">보정 구간에서 적용</div>
-                  </div>
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-            <div class="d-flex justify-content-end mt-3">
-              <button id="saveGameSettings" class="btn btn-primary">
-                설정 저장
-              </button>
-            </div>
-            <div
-              id="gameSettingsFeedback"
-              class="alert alert-info d-none mt-3"
-              role="alert"
-            ></div>
-          </div>
-        </div>
-      </section>
     </main>
 
     <script

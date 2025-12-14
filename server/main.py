@@ -34,6 +34,7 @@ SECRET_KEY = os.environ.get("TOKEN_SECRET", "dev-secret")
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "adminpass")
 UPDOWN_STATE: Dict[int, dict] = {}
 TOKEN_PREFIX = "Bearer "
+BIAS_COOLDOWN_STATE: dict[str, float] = {}
 
 
 def to_kst_str(dt: datetime) -> str:
@@ -80,6 +81,88 @@ def ensure_game_settings_columns() -> None:
             migrations.append(
                 "ALTER TABLE game_settings ADD COLUMN player_advantage_percent FLOAT NOT NULL DEFAULT 0.0"
             )
+        if "min_bet" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN min_bet INTEGER NOT NULL DEFAULT 1")
+        if "max_bet" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN max_bet INTEGER NOT NULL DEFAULT 10000")
+        if "maintenance_mode" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN maintenance_mode BOOLEAN NOT NULL DEFAULT 0")
+        if "slot_payout_triple_seven" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_payout_triple_seven FLOAT NOT NULL DEFAULT 10.0")
+        if "slot_payout_triple_same" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_payout_triple_same FLOAT NOT NULL DEFAULT 5.0")
+        if "slot_payout_double_same" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_payout_double_same FLOAT NOT NULL DEFAULT 1.5")
+        if "baccarat_payout_player" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN baccarat_payout_player FLOAT NOT NULL DEFAULT 2.0")
+        if "baccarat_payout_banker" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN baccarat_payout_banker FLOAT NOT NULL DEFAULT 1.95")
+        if "baccarat_payout_tie" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN baccarat_payout_tie FLOAT NOT NULL DEFAULT 8.0")
+        if "jackpot_enabled" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN jackpot_enabled BOOLEAN NOT NULL DEFAULT 0")
+        if "jackpot_contrib_percent" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN jackpot_contrib_percent FLOAT NOT NULL DEFAULT 0.0")
+        if "jackpot_trigger_percent" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN jackpot_trigger_percent FLOAT NOT NULL DEFAULT 0.0")
+        if "jackpot_pool" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN jackpot_pool FLOAT NOT NULL DEFAULT 0.0")
+        if "updown_payout1" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN updown_payout1 FLOAT NOT NULL DEFAULT 7.0")
+        if "updown_payout2" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN updown_payout2 FLOAT NOT NULL DEFAULT 5.0")
+        if "updown_payout3" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN updown_payout3 FLOAT NOT NULL DEFAULT 4.0")
+        if "updown_payout4" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN updown_payout4 FLOAT NOT NULL DEFAULT 3.0")
+        if "updown_payout5" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN updown_payout5 FLOAT NOT NULL DEFAULT 2.0")
+        if "updown_payout6" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN updown_payout6 FLOAT NOT NULL DEFAULT 0.0")
+        if "updown_payout7" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN updown_payout7 FLOAT NOT NULL DEFAULT 0.0")
+        if "updown_payout8" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN updown_payout8 FLOAT NOT NULL DEFAULT 0.0")
+        if "updown_payout9" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN updown_payout9 FLOAT NOT NULL DEFAULT 0.0")
+        if "updown_payout10" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN updown_payout10 FLOAT NOT NULL DEFAULT 0.0")
+        if "slot_anim_step_ms" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_step_ms INTEGER NOT NULL DEFAULT 60")
+        if "slot_anim_steps1" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_steps1 INTEGER NOT NULL DEFAULT 24")
+        if "slot_anim_steps2" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_steps2 INTEGER NOT NULL DEFAULT 34")
+        if "slot_anim_steps3" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_steps3 INTEGER NOT NULL DEFAULT 48")
+        if "slot_anim_stagger_ms" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_stagger_ms INTEGER NOT NULL DEFAULT 0")
+        if "slot_anim_extra_prob" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_extra_prob FLOAT NOT NULL DEFAULT 0.2")
+        if "slot_anim_extra_pct_min" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_extra_pct_min FLOAT NOT NULL DEFAULT 0.0")
+        if "slot_anim_extra_pct_max" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_extra_pct_max FLOAT NOT NULL DEFAULT 0.1")
+        if "slot_anim_smooth_strength" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_smooth_strength FLOAT NOT NULL DEFAULT 1.0")
+        if "slot_anim_match_prob" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_match_prob FLOAT NOT NULL DEFAULT 1.0")
+        if "slot_anim_match_min_pct" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_match_min_pct FLOAT NOT NULL DEFAULT 0.1")
+        if "slot_anim_match_max_pct" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_match_max_pct FLOAT NOT NULL DEFAULT 0.4")
+        if "slot_anim_match7_min_pct" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_match7_min_pct FLOAT NOT NULL DEFAULT 0.3")
+        if "slot_anim_match7_max_pct" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_match7_max_pct FLOAT NOT NULL DEFAULT 0.6")
+        if "slot_anim_extra25_prob" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_extra25_prob FLOAT NOT NULL DEFAULT 0.15")
+        if "slot_anim_extra25_pct" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_extra25_pct FLOAT NOT NULL DEFAULT 0.25")
+        if "slot_anim_smooth_threshold" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN slot_anim_smooth_threshold FLOAT NOT NULL DEFAULT 0.25")
+        if "bias_rules" not in existing_cols:
+            migrations.append("ALTER TABLE game_settings ADD COLUMN bias_rules TEXT NOT NULL DEFAULT '[]'")
         if "user_id" not in existing_cols:
             try:
                 conn.exec_driver_sql(
@@ -89,6 +172,22 @@ def ensure_game_settings_columns() -> None:
                 pass
         for sql in migrations:
             conn.exec_driver_sql(sql)
+
+        existing_cols_global = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info('global_settings')").fetchall()
+        }
+        if not existing_cols_global:
+            conn.exec_driver_sql(
+                """
+                CREATE TABLE IF NOT EXISTS global_settings (
+                    id INTEGER PRIMARY KEY,
+                    min_bet INTEGER NOT NULL DEFAULT 1,
+                    max_bet INTEGER NOT NULL DEFAULT 10000,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
 
 
 def ensure_default_game_settings(db: Session) -> None:
@@ -100,6 +199,47 @@ def ensure_default_game_settings(db: Session) -> None:
             "assist_enabled": False,
             "assist_max_bet": 50,
             "player_advantage_percent": 0.0,
+            "min_bet": 1,
+            "max_bet": 10000,
+            "maintenance_mode": False,
+            "slot_payout_triple_seven": 10.0,
+            "slot_payout_triple_same": 5.0,
+            "slot_payout_double_same": 1.5,
+            "baccarat_payout_player": 2.0,
+            "baccarat_payout_banker": 1.95,
+            "baccarat_payout_tie": 8.0,
+            "jackpot_enabled": False,
+            "jackpot_contrib_percent": 0.0,
+            "jackpot_trigger_percent": 0.0,
+            "jackpot_pool": 0.0,
+            "updown_payout1": 7.0,
+            "updown_payout2": 5.0,
+            "updown_payout3": 4.0,
+            "updown_payout4": 3.0,
+            "updown_payout5": 2.0,
+            "updown_payout6": 0.0,
+            "updown_payout7": 0.0,
+            "updown_payout8": 0.0,
+            "updown_payout9": 0.0,
+            "updown_payout10": 0.0,
+            "slot_anim_step_ms": 60,
+            "slot_anim_steps1": 24,
+            "slot_anim_steps2": 34,
+            "slot_anim_steps3": 48,
+            "slot_anim_stagger_ms": 0,
+            "slot_anim_extra_prob": 0.2,
+            "slot_anim_extra_pct_min": 0.0,
+            "slot_anim_extra_pct_max": 0.1,
+            "slot_anim_smooth_strength": 1.0,
+            "slot_anim_match_prob": 1.0,
+            "slot_anim_match_min_pct": 0.1,
+            "slot_anim_match_max_pct": 0.4,
+            "slot_anim_match7_min_pct": 0.3,
+            "slot_anim_match7_max_pct": 0.6,
+            "slot_anim_extra25_prob": 0.15,
+            "slot_anim_extra25_pct": 0.25,
+            "slot_anim_smooth_threshold": 0.25,
+            "bias_rules": "[]",
         },
         "slot": {
             "risk_enabled": True,
@@ -108,6 +248,60 @@ def ensure_default_game_settings(db: Session) -> None:
             "assist_enabled": False,
             "assist_max_bet": 50,
             "player_advantage_percent": 0.0,
+            "min_bet": 1,
+            "max_bet": 10000,
+            "maintenance_mode": False,
+            "slot_payout_triple_seven": 10.0,
+            "slot_payout_triple_same": 5.0,
+            "slot_payout_double_same": 1.5,
+            "baccarat_payout_player": 2.0,
+            "baccarat_payout_banker": 1.95,
+            "baccarat_payout_tie": 8.0,
+            "jackpot_enabled": False,
+            "jackpot_contrib_percent": 0.0,
+            "jackpot_trigger_percent": 0.0,
+            "jackpot_pool": 0.0,
+            "updown_payout1": 7.0,
+            "updown_payout2": 5.0,
+            "updown_payout3": 4.0,
+            "updown_payout4": 3.0,
+            "updown_payout5": 2.0,
+            "updown_payout6": 0.0,
+            "updown_payout7": 0.0,
+            "updown_payout8": 0.0,
+            "updown_payout9": 0.0,
+            "updown_payout10": 0.0,
+            "slot_anim_step_ms": 60,
+            "slot_anim_steps1": 24,
+            "slot_anim_steps2": 34,
+            "slot_anim_steps3": 48,
+            "slot_anim_stagger_ms": 0,
+            "slot_anim_extra_prob": 0.2,
+            "slot_anim_extra_pct_min": 0.0,
+            "slot_anim_extra_pct_max": 0.1,
+            "slot_anim_smooth_strength": 1.0,
+            "slot_anim_match_prob": 1.0,
+            "slot_anim_match_min_pct": 0.1,
+            "slot_anim_match_max_pct": 0.4,
+            "slot_anim_match7_min_pct": 0.3,
+            "slot_anim_match7_max_pct": 0.6,
+            "slot_anim_extra25_prob": 0.15,
+            "slot_anim_extra25_pct": 0.25,
+            "slot_anim_smooth_threshold": 0.25,
+            "bias_rules": json.dumps(
+                [
+                    {
+                        "id": "house-slot-default",
+                        "enabled": True,
+                        "direction": "house",
+                        "probability": 0.2,
+                        "games": ["slot"],
+                        "priority": 1,
+                        "bet_min": 1,
+                        "bet_max": 10**12,
+                    }
+                ]
+            ),
         },
         "baccarat": {
             "risk_enabled": True,
@@ -116,6 +310,60 @@ def ensure_default_game_settings(db: Session) -> None:
             "assist_enabled": False,
             "assist_max_bet": 50,
             "player_advantage_percent": 0.0,
+            "min_bet": 1,
+            "max_bet": 10000,
+            "maintenance_mode": False,
+            "slot_payout_triple_seven": 10.0,
+            "slot_payout_triple_same": 5.0,
+            "slot_payout_double_same": 1.5,
+            "baccarat_payout_player": 2.0,
+            "baccarat_payout_banker": 1.95,
+            "baccarat_payout_tie": 8.0,
+            "jackpot_enabled": False,
+            "jackpot_contrib_percent": 0.0,
+            "jackpot_trigger_percent": 0.0,
+            "jackpot_pool": 0.0,
+            "updown_payout1": 7.0,
+            "updown_payout2": 5.0,
+            "updown_payout3": 4.0,
+            "updown_payout4": 3.0,
+            "updown_payout5": 2.0,
+            "updown_payout6": 0.0,
+            "updown_payout7": 0.0,
+            "updown_payout8": 0.0,
+            "updown_payout9": 0.0,
+            "updown_payout10": 0.0,
+            "slot_anim_step_ms": 60,
+            "slot_anim_steps1": 24,
+            "slot_anim_steps2": 34,
+            "slot_anim_steps3": 48,
+            "slot_anim_stagger_ms": 0,
+            "slot_anim_extra_prob": 0.2,
+            "slot_anim_extra_pct_min": 0.0,
+            "slot_anim_extra_pct_max": 0.1,
+            "slot_anim_smooth_strength": 1.0,
+            "slot_anim_match_prob": 1.0,
+            "slot_anim_match_min_pct": 0.1,
+            "slot_anim_match_max_pct": 0.4,
+            "slot_anim_match7_min_pct": 0.3,
+            "slot_anim_match7_max_pct": 0.6,
+            "slot_anim_extra25_prob": 0.15,
+            "slot_anim_extra25_pct": 0.25,
+            "slot_anim_smooth_threshold": 0.25,
+            "bias_rules": json.dumps(
+                [
+                    {
+                        "id": "house-baccarat-default",
+                        "enabled": True,
+                        "direction": "house",
+                        "probability": 0.2,
+                        "games": ["baccarat"],
+                        "priority": 1,
+                        "bet_min": 1,
+                        "bet_max": 10**12,
+                    }
+                ]
+            ),
         },
     }
     for game_id, cfg in defaults.items():
@@ -125,6 +373,10 @@ def ensure_default_game_settings(db: Session) -> None:
             .first()
         )
         if existing:
+            # Backfill 기본 bias_rules가 비어 있을 경우만 채움
+            if not existing.bias_rules or existing.bias_rules in ("[]", "null"):
+                existing.bias_rules = cfg.get("bias_rules", "[]")
+                db.add(existing)
             continue
         setting = models.GameSetting(
             game_id=game_id,
@@ -134,6 +386,47 @@ def ensure_default_game_settings(db: Session) -> None:
             assist_enabled=cfg["assist_enabled"],
             assist_max_bet=cfg["assist_max_bet"],
             player_advantage_percent=cfg["player_advantage_percent"],
+            min_bet=cfg["min_bet"],
+            max_bet=cfg["max_bet"],
+            maintenance_mode=cfg["maintenance_mode"],
+            slot_payout_triple_seven=cfg["slot_payout_triple_seven"],
+            slot_payout_triple_same=cfg["slot_payout_triple_same"],
+            slot_payout_double_same=cfg["slot_payout_double_same"],
+            baccarat_payout_player=cfg["baccarat_payout_player"],
+            baccarat_payout_banker=cfg["baccarat_payout_banker"],
+            baccarat_payout_tie=cfg["baccarat_payout_tie"],
+            jackpot_enabled=cfg["jackpot_enabled"],
+            jackpot_contrib_percent=cfg["jackpot_contrib_percent"],
+            jackpot_trigger_percent=cfg["jackpot_trigger_percent"],
+            jackpot_pool=cfg["jackpot_pool"],
+            updown_payout1=cfg["updown_payout1"],
+            updown_payout2=cfg["updown_payout2"],
+            updown_payout3=cfg["updown_payout3"],
+            updown_payout4=cfg["updown_payout4"],
+            updown_payout5=cfg["updown_payout5"],
+            updown_payout6=cfg.get("updown_payout6", 0.0),
+            updown_payout7=cfg.get("updown_payout7", 0.0),
+            updown_payout8=cfg.get("updown_payout8", 0.0),
+            updown_payout9=cfg.get("updown_payout9", 0.0),
+            updown_payout10=cfg.get("updown_payout10", 0.0),
+            slot_anim_step_ms=cfg.get("slot_anim_step_ms", 60),
+            slot_anim_steps1=cfg.get("slot_anim_steps1", 24),
+            slot_anim_steps2=cfg.get("slot_anim_steps2", 34),
+            slot_anim_steps3=cfg.get("slot_anim_steps3", 48),
+            slot_anim_stagger_ms=cfg.get("slot_anim_stagger_ms", 0),
+            slot_anim_extra_prob=cfg.get("slot_anim_extra_prob", 0.2),
+            slot_anim_extra_pct_min=cfg.get("slot_anim_extra_pct_min", 0.0),
+            slot_anim_extra_pct_max=cfg.get("slot_anim_extra_pct_max", 0.1),
+            slot_anim_smooth_strength=cfg.get("slot_anim_smooth_strength", 1.0),
+            slot_anim_match_prob=cfg.get("slot_anim_match_prob", 1.0),
+            slot_anim_match_min_pct=cfg.get("slot_anim_match_min_pct", 0.1),
+            slot_anim_match_max_pct=cfg.get("slot_anim_match_max_pct", 0.4),
+            slot_anim_match7_min_pct=cfg.get("slot_anim_match7_min_pct", 0.3),
+            slot_anim_match7_max_pct=cfg.get("slot_anim_match7_max_pct", 0.6),
+            slot_anim_extra25_prob=cfg.get("slot_anim_extra25_prob", 0.15),
+            slot_anim_extra25_pct=cfg.get("slot_anim_extra25_pct", 0.25),
+            slot_anim_smooth_threshold=cfg.get("slot_anim_smooth_threshold", 0.25),
+            bias_rules=cfg.get("bias_rules", "[]"),
         )
         db.add(setting)
     db.commit()
@@ -206,6 +499,29 @@ def require_admin(admin_secret: str | None = Header(None)):
     if admin_secret != ADMIN_SECRET:
         raise HTTPException(status_code=401, detail="Admin unauthorized")
 
+
+def get_global_limits(db: Session) -> tuple[int, int]:
+    gs = db.query(models.GlobalSetting).filter(models.GlobalSetting.id == 1).first()
+    if not gs:
+        gs = models.GlobalSetting(id=1, min_bet=1, max_bet=10000)
+        db.add(gs)
+        db.commit()
+        db.refresh(gs)
+    return gs.min_bet, gs.max_bet
+
+
+def enforce_bet_limits(
+    game_setting: models.GameSetting, global_min: int, global_max: int, bet_amount: int
+) -> None:
+    effective_min = max(global_min, game_setting.min_bet)
+    effective_max = min(global_max, game_setting.max_bet)
+    if bet_amount > effective_max:
+        raise HTTPException(status_code=400, detail="최대 베팅 한도입니다.")
+    if bet_amount < effective_min:
+        raise HTTPException(status_code=400, detail="최소 베팅 한도입니다.")
+    if game_setting.maintenance_mode:
+        raise HTTPException(status_code=400, detail="점검 중입니다.")
+
 app = FastAPI(
     title="Virtual Probability Simulation",
     description="Educational betting simulation used for classroom exercises.",
@@ -229,6 +545,10 @@ app.mount(
 def startup() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_game_settings_columns()
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "INSERT OR IGNORE INTO global_settings (id, min_bet, max_bet) VALUES (1, 1, 10000)"
+        )
     db = SessionLocal()
     try:
         ensure_default_game_settings(db)
@@ -329,9 +649,17 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "game_profit_total": game_profit_total,
             "adjustment_total": adjustment_total,
             "total_profit": total_profit,
-            "game_settings": game_settings,
-            "game_labels": GAME_LABELS,
-        },
+        "game_settings": game_settings,
+        "game_labels": GAME_LABELS,
+    },
+)
+
+
+@app.get("/admin/settings", include_in_schema=False)
+def admin_settings_page(request: Request):
+    return templates.TemplateResponse(
+        "settings.html",
+        {"request": request},
     )
 
 
@@ -650,9 +978,10 @@ def process_game_result(
     multiplier: float,
     detail: dict,
     bet_choice: str | None = None,
+    payout_amount_override: float | None = None,
 ):
-    payout_amount = bet_amount * multiplier
-    if abs(multiplier - 1.5) < 1e-9:
+    payout_amount = payout_amount_override if payout_amount_override is not None else bet_amount * multiplier
+    if abs(multiplier - 1.5) < 1e-9 and payout_amount_override is None:
         payout_amount = math.ceil(payout_amount)
     delta = int(round(payout_amount - bet_amount))
     apply_balance_change(
@@ -683,20 +1012,20 @@ def process_game_result(
         game_id,
         "result",
         {
-        "bet_amount": bet_amount,
-        "result": result,
-        "payout_multiplier": multiplier,
-        "payout_amount": payout_amount,
-        "detail": detail,
-    },
-    commit=False,
-)
+            "bet_amount": bet_amount,
+            "result": result,
+            "payout_multiplier": multiplier,
+            "payout_amount": payout_amount,
+            "detail": detail,
+        },
+        commit=False,
+    )
     db.commit()
     db.refresh(user)
     return schemas.GameResponse(
         result=result,
         payout_multiplier=multiplier,
-        payout_amount=bet_amount * multiplier,
+        payout_amount=payout_amount,
         delta=delta,
         balance=user.balance,
         detail=detail,
@@ -773,6 +1102,28 @@ def api_game_updown(
 ):
     if current_user.balance < payload.bet_amount:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
+    setting = (
+        db.query(models.GameSetting)
+        .filter(models.GameSetting.game_id == "updown")
+        .first()
+    )
+    if setting is None:
+        raise HTTPException(status_code=400, detail="설정이 없습니다.")
+    global_min, global_max = get_global_limits(db)
+    enforce_bet_limits(setting, global_min, global_max, payload.bet_amount)
+    payouts = [
+        setting.updown_payout1,
+        setting.updown_payout2,
+        setting.updown_payout3,
+        setting.updown_payout4,
+        setting.updown_payout5,
+        setting.updown_payout6,
+        setting.updown_payout7,
+        setting.updown_payout8,
+        setting.updown_payout9,
+        setting.updown_payout10,
+    ]
+    payouts = normalize_payouts(payouts)
     log_game_event(
         db,
         current_user,
@@ -781,7 +1132,16 @@ def api_game_updown(
         {"bet_amount": payload.bet_amount, "guesses": payload.guesses[:5]},
         commit=False,
     )
-    result, multiplier, detail = play_updown_logic(payload.guesses)
+    result, multiplier, detail = play_updown_logic(payload.guesses, payouts)
+    rules = parse_bias_rules(setting)
+    bias_ctx = build_bias_context(db, current_user, "updown", payload.bet_amount, None)
+    base_result = result
+    result, multiplier, applied_rule = apply_bias("updown", payload.bet_amount, result, multiplier, rules, bias_ctx)
+    if applied_rule:
+        detail["bias_rule"] = applied_rule
+    if applied_rule and result != base_result:
+        last_guess = payload.guesses[-1] if payload.guesses else None
+        detail = align_updown_detail(detail, result, last_guess)
     return process_game_result(
         db,
         current_user,
@@ -803,12 +1163,35 @@ def api_game_updown_start(
         raise HTTPException(status_code=400, detail="베팅 포인트가 필요합니다.")
     if current_user.balance < bet_amount:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
+    setting = (
+        db.query(models.GameSetting)
+        .filter(models.GameSetting.game_id == "updown")
+        .first()
+    )
+    if setting is None:
+        raise HTTPException(status_code=400, detail="설정이 없습니다.")
+    global_min, global_max = get_global_limits(db)
+    enforce_bet_limits(setting, global_min, global_max, bet_amount)
+    payouts = [
+        setting.updown_payout1,
+        setting.updown_payout2,
+        setting.updown_payout3,
+        setting.updown_payout4,
+        setting.updown_payout5,
+        setting.updown_payout6,
+        setting.updown_payout7,
+        setting.updown_payout8,
+        setting.updown_payout9,
+        setting.updown_payout10,
+    ]
+    payouts = normalize_payouts(payouts)
     target = random.randint(1, 100)
     UPDOWN_STATE[current_user.id] = {
         "target": target,
         "attempts": 0,
         "guesses": [],
         "bet_amount": bet_amount,
+        "payouts": payouts,
     }
     log_game_event(
         db,
@@ -817,7 +1200,7 @@ def api_game_updown_start(
         "start",
         {"bet_amount": bet_amount, "target": target},
     )
-    return {"message": "게임 시작", "remaining": 5}
+    return {"message": "게임 시작", "remaining": len(payouts)}
 
 
 @app.post("/api/game/updown/guess", response_model=schemas.GameResponse)
@@ -842,13 +1225,34 @@ def api_game_updown_guess(
     )
     if finished:
         UPDOWN_STATE.pop(current_user.id, None)
+        # Apply bias for final outcome
+        setting = (
+            db.query(models.GameSetting)
+            .filter(models.GameSetting.game_id == "updown")
+            .first()
+        )
+        rules = parse_bias_rules(setting) if setting else []
+        bias_ctx = build_bias_context(db, current_user, "updown", result_data["bet_amount"], None)
+        base_result = result_data["result"]
+        adj_result, adj_multiplier, applied_rule = apply_bias(
+            "updown",
+            result_data["bet_amount"],
+            result_data["result"],
+            result_data["multiplier"],
+            rules,
+            bias_ctx,
+        )
+        if applied_rule:
+            detail["bias_rule"] = applied_rule
+        if applied_rule and adj_result != base_result:
+            detail = align_updown_detail(detail, adj_result, payload.guess)
         return process_game_result(
             db,
             current_user,
             "updown",
             result_data["bet_amount"],
-            result_data["result"],
-            result_data["multiplier"],
+            adj_result,
+            adj_multiplier,
             detail,
         )
     return schemas.GameResponse(
@@ -867,15 +1271,70 @@ def api_game_slot(
 ):
     if current_user.balance < payload.bet_amount:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
+    setting = (
+        db.query(models.GameSetting)
+        .filter(models.GameSetting.game_id == "slot")
+        .first()
+    )
+    if setting is None:
+        raise HTTPException(status_code=400, detail="설정이 없습니다.")
+    global_min, global_max = get_global_limits(db)
+    enforce_bet_limits(setting, global_min, global_max, payload.bet_amount)
+    result, multiplier, detail, payout_override = play_slot_logic(setting, payload.bet_amount, db)
+    base_result = result
+    rules = parse_bias_rules(setting)
+    bias_ctx = build_bias_context(db, current_user, "slot", payload.bet_amount, None)
+    result, multiplier, applied_rule = apply_bias("slot", payload.bet_amount, result, multiplier, rules, bias_ctx)
+    if applied_rule:
+        detail["bias_rule"] = applied_rule
+    if applied_rule and result != base_result:
+        # 강제된 결과에 맞춰 심볼/배당을 일치시킨다.
+        payout_override = None
+        if result == "lose":
+            detail["symbols"] = ["A", "B", "C"]
+            detail["jackpot_win"] = False
+            detail["jackpot_amount"] = 0.0
+            multiplier = 0.0
+        else:  # forced win
+            final_symbols = ["A", "A", "B"]
+            final_multiplier = max(multiplier, setting.slot_payout_double_same)
+            if final_multiplier >= setting.slot_payout_triple_seven:
+                final_symbols = ["7", "7", "7"]
+                final_multiplier = setting.slot_payout_triple_seven
+            elif final_multiplier >= setting.slot_payout_triple_same:
+                final_symbols = ["A", "A", "A"]
+                final_multiplier = setting.slot_payout_triple_same
+            multiplier = final_multiplier
+            detail["symbols"] = final_symbols
+            detail["jackpot_win"] = False
+            detail["jackpot_amount"] = 0.0
+    detail["anim"] = {
+        "step_ms": setting.slot_anim_step_ms,
+        "steps1": setting.slot_anim_steps1,
+        "steps2": setting.slot_anim_steps2,
+        "steps3": setting.slot_anim_steps3,
+        "stagger_ms": setting.slot_anim_stagger_ms,
+        "extra_prob": setting.slot_anim_extra_prob,
+        "extra_pct_min": setting.slot_anim_extra_pct_min,
+        "extra_pct_max": setting.slot_anim_extra_pct_max,
+        "smooth_strength": setting.slot_anim_smooth_strength,
+        "match_prob": setting.slot_anim_match_prob,
+        "match_min_pct": setting.slot_anim_match_min_pct,
+        "match_max_pct": setting.slot_anim_match_max_pct,
+        "match7_min_pct": setting.slot_anim_match7_min_pct,
+        "match7_max_pct": setting.slot_anim_match7_max_pct,
+        "extra25_prob": setting.slot_anim_extra25_prob,
+        "extra25_pct": setting.slot_anim_extra25_pct,
+        "smooth_threshold": setting.slot_anim_smooth_threshold,
+    }
     log_game_event(
         db,
         current_user,
         "slot",
         "play",
-        {"bet_amount": payload.bet_amount},
+        {"bet_amount": payload.bet_amount, "anim": detail.get("anim", {}), "bias_rule": detail.get("bias_rule")},
         commit=False,
     )
-    result, multiplier, detail = play_slot_logic()
     return process_game_result(
         db,
         current_user,
@@ -884,6 +1343,7 @@ def api_game_slot(
         result,
         multiplier,
         detail,
+        payout_amount_override=payout_override,
     )
 
 
@@ -900,26 +1360,18 @@ def api_game_baccarat(
         .filter(models.GameSetting.game_id == "baccarat")
         .first()
     )
+    if setting is None:
+        raise HTTPException(status_code=400, detail="설정이 없습니다.")
     setting_dict = {
-        "risk_enabled": bool(setting.risk_enabled) if setting else False,
-        "risk_threshold": setting.risk_threshold if setting else 0,
-        "casino_advantage_percent": setting.casino_advantage_percent if setting else 0,
-        "assist_enabled": bool(setting.assist_enabled) if setting else False,
-        "assist_max_bet": setting.assist_max_bet if setting else 0,
-        "player_advantage_percent": setting.player_advantage_percent if setting else 0,
+        "maintenance_mode": bool(setting.maintenance_mode) if setting else False,
+        "baccarat_payout_player": setting.baccarat_payout_player if setting else 2.0,
+        "baccarat_payout_banker": setting.baccarat_payout_banker if setting else 1.95,
+        "baccarat_payout_tie": setting.baccarat_payout_tie if setting else 8.0,
     }
-    target_outcome = None
-    casino_active = (
-        setting_dict["risk_enabled"]
-        and payload.bet_amount >= setting_dict["risk_threshold"]
-        and random.random() < (setting_dict["casino_advantage_percent"] / 100.0)
-    )
-    player_active = (
-        setting_dict["assist_enabled"]
-        and payload.bet_amount <= setting_dict["assist_max_bet"]
-        and random.random() < (setting_dict["player_advantage_percent"] / 100.0)
-    )
-
+    if setting_dict["maintenance_mode"]:
+        raise HTTPException(status_code=400, detail="점검 중입니다.")
+    gmin, gmax = get_global_limits(db)
+    enforce_bet_limits(setting, gmin, gmax, payload.bet_amount)
     log_game_event(
         db,
         current_user,
@@ -928,21 +1380,30 @@ def api_game_baccarat(
         {"bet_amount": payload.bet_amount, "bet_choice": payload.bet_choice},
         commit=False,
     )
-
-    if casino_active:
-        if payload.bet_choice == "player":
-            target_outcome = "banker"
-        elif payload.bet_choice == "banker":
-            target_outcome = "player"
-        else:
-            target_outcome = "banker"
-    elif player_active:
-        target_outcome = payload.bet_choice
-
-    result, multiplier, detail = play_baccarat_logic(
-        payload.bet_choice, setting_dict, target_outcome
+    base_result, multiplier, detail = play_baccarat_logic(
+        payload.bet_choice, setting_dict, None
     )
+    rules = parse_bias_rules(setting)
+    bias_ctx = build_bias_context(db, current_user, "baccarat", payload.bet_amount, payload.bet_choice)
+    result, multiplier, applied_rule = apply_bias("baccarat", payload.bet_amount, base_result, multiplier, rules, bias_ctx)
+    if applied_rule and result != base_result:
+        target_outcome = None
+        if result == "lose":
+            if payload.bet_choice == "player":
+                target_outcome = "banker"
+            elif payload.bet_choice == "banker":
+                target_outcome = "player"
+            else:
+                target_outcome = "player"
+        elif result == "win":
+            target_outcome = payload.bet_choice
+        if target_outcome:
+            result, multiplier, detail = play_baccarat_logic(
+                payload.bet_choice, setting_dict, target_outcome
+            )
     detail["bet_choice"] = payload.bet_choice
+    if applied_rule:
+        detail["bias_rule"] = applied_rule
     return process_game_result(
         db,
         current_user,
@@ -980,28 +1441,70 @@ def apply_balance_change(
     db.add(user)
 
 
-def play_updown_logic(guesses: List[int]) -> tuple[str, float, dict]:
+def normalize_payouts(payouts: List[float]) -> List[float]:
+    """Trim payouts at the first non-positive entry to reflect available attempts."""
+    normalized = []
+    for p in payouts:
+        if p <= 0:
+            break
+        normalized.append(p)
+    return normalized
+
+
+def play_updown_logic(guesses: List[int], payouts: List[float] | None = None) -> tuple[str, float, dict]:
     target = random.randint(1, 100)
+    payouts_full = payouts or [7, 5, 4, 3, 2, 0, 0, 0, 0, 0]
+    payouts_eff = normalize_payouts(payouts_full)
+    max_attempts = len(payouts_eff)
     detail = {"target": target, "guesses": guesses}
     multiplier = 0.0
     result = "lose"
-    for idx, guess in enumerate(guesses[:5]):
+    for idx, guess in enumerate(guesses[: max_attempts]):
         attempt = idx + 1
         if guess == target:
             result = "win"
-            if attempt == 1:
-                multiplier = 7
-            elif attempt == 2:
-                multiplier = 5
-            elif attempt == 3:
-                multiplier = 4
-            elif attempt == 4:
-                multiplier = 3
-            elif attempt == 5:
-                multiplier = 2
+            multiplier = payouts_eff[idx] if idx < max_attempts else 0
             break
-    detail["attempts"] = len(guesses[:5])
+    detail["attempts"] = len(guesses[: max_attempts])
+    detail["max_attempts"] = max_attempts
     return result, multiplier, detail
+
+
+def align_updown_detail(detail: dict, result: str, last_guess: int | None = None) -> dict:
+    """Keep displayed target/hint consistent with final result after bias."""
+    guesses = list(detail.get("guesses") or [])
+    target = detail.get("target")
+    attempts = detail.get("attempts", len(guesses))
+    hint = detail.get("hint")
+    lg = last_guess if last_guess is not None else (guesses[-1] if guesses else None)
+    if result == "win":
+        # Force a matching guess
+        if lg is None and guesses:
+            lg = guesses[-1]
+        if lg is not None:
+            target = lg
+            if guesses:
+                guesses[-1] = lg
+            else:
+                guesses.append(lg)
+            hint = "CORRECT"
+        detail.update({"target": target, "guesses": guesses, "attempts": attempts, "hint": hint})
+    else:  # lose
+        if lg is not None and target == lg:
+            # pick a target not guessed
+            for t in range(1, 101):
+                if t != lg and t not in guesses:
+                    target = t
+                    break
+        if hint is not None and lg is not None:
+            if target > lg:
+                hint = "UP"
+            elif target < lg:
+                hint = "DOWN"
+            else:
+                hint = "DOWN"
+        detail.update({"target": target, "guesses": guesses, "attempts": attempts, "hint": hint})
+    return detail
 
 
 def play_updown_guess(user_id: int, guess: int) -> tuple[dict, bool]:
@@ -1015,21 +1518,32 @@ def play_updown_guess(user_id: int, guess: int) -> tuple[dict, bool]:
     finished = False
     result = "continue"
     multiplier = 0.0
+    payouts = state.get("payouts") or [7, 5, 4, 3, 2, 0, 0, 0, 0, 0]
     hint = "UP" if guess < target else "DOWN" if guess > target else "CORRECT"
     if guess == target:
         finished = True
         result = "win"
         if attempts == 1:
-            multiplier = 7
+            multiplier = payouts[0]
         elif attempts == 2:
-            multiplier = 5
+            multiplier = payouts[1]
         elif attempts == 3:
-            multiplier = 4
+            multiplier = payouts[2]
         elif attempts == 4:
-            multiplier = 3
+            multiplier = payouts[3]
         elif attempts == 5:
-            multiplier = 2
-    elif attempts >= 5:
+            multiplier = payouts[4]
+        elif attempts == 6:
+            multiplier = payouts[5]
+        elif attempts == 7:
+            multiplier = payouts[6]
+        elif attempts == 8:
+            multiplier = payouts[7]
+        elif attempts == 9:
+            multiplier = payouts[8]
+        elif attempts == 10:
+            multiplier = payouts[9]
+    elif attempts >= len(payouts):
         finished = True
         result = "lose"
         multiplier = 0.0
@@ -1038,6 +1552,7 @@ def play_updown_guess(user_id: int, guess: int) -> tuple[dict, bool]:
         "guesses": list(state["guesses"]),
         "attempts": attempts,
         "hint": hint,
+        "max_attempts": len(payouts),
     }
     return {
         "result": result,
@@ -1048,18 +1563,162 @@ def play_updown_guess(user_id: int, guess: int) -> tuple[dict, bool]:
     }, finished
 
 
-def play_slot_logic() -> tuple[str, float, dict]:
+def play_slot_logic(
+    setting: models.GameSetting, bet_amount: int, db: Session
+) -> tuple[str, float, dict, float | None]:
     symbols = [random.choice(["A", "B", "C", "D", "7"]) for _ in range(3)]
     if symbols.count("7") == 3:
-        multiplier = 10
+        multiplier = setting.slot_payout_triple_seven
     elif len(set(symbols)) == 1:
-        multiplier = 5
+        multiplier = setting.slot_payout_triple_same
     elif len(set(symbols)) == 2:
-        multiplier = 1.5
+        multiplier = setting.slot_payout_double_same
     else:
         multiplier = 0
-    result = "win" if multiplier > 0 else "lose"
-    return result, float(multiplier), {"symbols": symbols}
+    jackpot_win = False
+    jackpot_amount = 0.0
+    if setting.jackpot_enabled and bet_amount > 0 and setting.jackpot_trigger_percent > 0:
+        contrib = bet_amount * (setting.jackpot_contrib_percent / 100.0)
+        setting.jackpot_pool += contrib
+        db.add(setting)
+        if random.random() < (setting.jackpot_trigger_percent / 100.0):
+            jackpot_win = True
+            jackpot_amount = setting.jackpot_pool
+            setting.jackpot_pool = 0.0
+            db.add(setting)
+    result = "win" if multiplier > 0 or jackpot_win else "lose"
+    total_payout = bet_amount * multiplier + jackpot_amount
+    detail = {"symbols": symbols, "jackpot_win": jackpot_win, "jackpot_amount": jackpot_amount, "pool": setting.jackpot_pool}
+    payout_override = total_payout if jackpot_win else None
+    return result, float(multiplier), detail, payout_override
+
+
+def parse_bias_rules(setting: models.GameSetting) -> list[dict]:
+    if isinstance(setting.bias_rules, list):
+        return setting.bias_rules
+    try:
+        rules = json.loads(setting.bias_rules or "[]")
+        if isinstance(rules, list):
+            return rules
+    except Exception:
+        pass
+    return []
+
+
+def get_user_streak(db: Session, user_id: int, game_id: str, lookback: int = 50) -> tuple[int, int]:
+    """Return consecutive win/lose streak counts for the user/game."""
+    win_streak = 0
+    lose_streak = 0
+    results = (
+        db.query(models.GameResult)
+        .filter(models.GameResult.user_id == user_id, models.GameResult.game_id == game_id)
+        .order_by(models.GameResult.timestamp.desc())
+        .limit(lookback)
+        .all()
+    )
+    for res in results:
+        if res.result == "win":
+            if lose_streak > 0:
+                break
+            win_streak += 1
+        elif res.result == "lose":
+            if win_streak > 0:
+                break
+            lose_streak += 1
+        else:
+            break
+    return win_streak, lose_streak
+
+
+def get_recent_rtp(db: Session, game_id: str, window: int = 100) -> float | None:
+    rows = (
+        db.query(models.GameResult)
+        .filter(models.GameResult.game_id == game_id)
+        .order_by(models.GameResult.timestamp.desc())
+        .limit(window)
+        .all()
+    )
+    total_bet = sum(r.bet_amount for r in rows)
+    total_payout = sum(r.payout_amount for r in rows)
+    if total_bet <= 0:
+        return None
+    return float(total_payout) / float(total_bet)
+
+
+def build_bias_context(db: Session, user: models.User, game_id: str, bet_amount: int, bet_choice: str | None) -> dict:
+    win_streak, lose_streak = get_user_streak(db, user.id, game_id)
+    rtp_recent = get_recent_rtp(db, game_id)
+    return {
+        "user_id": user.id,
+        "game_id": game_id,
+        "bet_amount": bet_amount,
+        "bet_choice": bet_choice,
+        "win_streak": win_streak,
+        "lose_streak": lose_streak,
+        "rtp_recent": rtp_recent,
+    }
+
+
+def apply_bias(
+    game_id: str,
+    bet_amount: int,
+    result: str,
+    multiplier: float,
+    rules: list[dict],
+    context: dict,
+) -> tuple[str, float, dict]:
+    applied_rule = None
+    now_ts = time.time()
+    sorted_rules = sorted(rules, key=lambda r: r.get("priority", 0), reverse=True)
+    for rule in sorted_rules:
+        if not rule.get("enabled", True):
+            continue
+        games = rule.get("games")
+        if games and game_id not in games:
+            continue
+        bet_min = rule.get("bet_min", 0)
+        bet_max = rule.get("bet_max", 10**12)
+        if bet_amount < bet_min or bet_amount > bet_max:
+            continue
+        choice_in = rule.get("bet_choices")
+        if choice_in and context.get("bet_choice") not in choice_in:
+            continue
+        streak_win = rule.get("streak_win_at_least", 0)
+        streak_lose = rule.get("streak_lose_at_least", 0)
+        if streak_win and context.get("win_streak", 0) < streak_win:
+            continue
+        if streak_lose and context.get("lose_streak", 0) < streak_lose:
+            continue
+        target_rtp = rule.get("target_rtp")
+        rtp_recent = context.get("rtp_recent")
+        direction = rule.get("direction")
+        if direction not in ("house", "player"):
+            continue
+        if target_rtp is not None and rtp_recent is not None:
+            if direction == "house" and rtp_recent <= target_rtp:
+                continue
+            if direction == "player" and rtp_recent >= target_rtp:
+                continue
+        cooldown = rule.get("cooldown_sec", 0)
+        rule_id = str(rule.get("id") or rule.get("name") or hash(json.dumps(rule, sort_keys=True)))
+        last_applied = BIAS_COOLDOWN_STATE.get(rule_id, 0)
+        if cooldown and now_ts - last_applied < cooldown:
+            continue
+        prob = float(rule.get("probability", rule.get("weight", 0)))
+        if prob <= 0:
+            continue
+        if random.random() >= prob:
+            continue
+        applied_rule = rule | {"rule_id": rule_id}
+        if direction == "house" and result == "win":
+            result = "lose"
+            multiplier = 0.0
+        elif direction == "player" and result == "lose":
+            result = "win"
+            multiplier = rule.get("win_multiplier", max(multiplier, 1.0))
+        BIAS_COOLDOWN_STATE[rule_id] = now_ts
+        break
+    return result, multiplier, applied_rule or {}
 
 
 def baccarat_draw_card(deck: List[dict]) -> dict:
@@ -1153,23 +1812,27 @@ def play_baccarat_logic(
         if target_outcome is None or outcome == target_outcome:
             break
 
+    payout_player = setting.get("baccarat_payout_player", 2.0)
+    payout_banker = setting.get("baccarat_payout_banker", 1.95)
+    payout_tie = setting.get("baccarat_payout_tie", 8.0)
+
     multiplier = 0.0
     result = "lose"
     if bet_choice == "tie":
         if outcome == "tie":
-            multiplier = 8.0
+            multiplier = payout_tie
             result = "win"
         else:
             result = "lose"
     elif bet_choice == "player":
         if outcome == "player":
-            multiplier = 2.0
+            multiplier = payout_player
             result = "win"
         else:
             result = "lose"
     else:  # banker bet
         if outcome == "banker":
-            multiplier = 1.95
+            multiplier = payout_banker
             result = "win"
         else:
             result = "lose"
@@ -1185,10 +1848,16 @@ def play_baccarat_logic(
 
 
 @app.get("/game_settings", response_model=List[schemas.GameSettingItem])
-def get_game_settings(db: Session = Depends(get_db)):
+def get_game_settings(db: Session = Depends(get_db), admin=Depends(require_admin)):
     settings = (
         db.query(models.GameSetting).order_by(models.GameSetting.game_id.asc()).all()
     )
+    for s in settings:
+        if isinstance(s.bias_rules, str):
+            try:
+                s.bias_rules = json.loads(s.bias_rules)
+            except Exception:
+                s.bias_rules = []
     return settings
 
 
@@ -1214,7 +1883,77 @@ def update_game_settings(
         setting.assist_enabled = item.assist_enabled
         setting.assist_max_bet = item.assist_max_bet
         setting.player_advantage_percent = item.player_advantage_percent
+        setting.min_bet = item.min_bet
+        setting.max_bet = item.max_bet
+        setting.maintenance_mode = item.maintenance_mode
+        setting.slot_payout_triple_seven = item.slot_payout_triple_seven
+        setting.slot_payout_triple_same = item.slot_payout_triple_same
+        setting.slot_payout_double_same = item.slot_payout_double_same
+        setting.baccarat_payout_player = item.baccarat_payout_player
+        setting.baccarat_payout_banker = item.baccarat_payout_banker
+        setting.baccarat_payout_tie = item.baccarat_payout_tie
+        setting.jackpot_enabled = item.jackpot_enabled
+        setting.jackpot_contrib_percent = item.jackpot_contrib_percent
+        setting.jackpot_trigger_percent = item.jackpot_trigger_percent
+        setting.jackpot_pool = item.jackpot_pool
+        setting.updown_payout1 = item.updown_payout1
+        setting.updown_payout2 = item.updown_payout2
+        setting.updown_payout3 = item.updown_payout3
+        setting.updown_payout4 = item.updown_payout4
+        setting.updown_payout5 = item.updown_payout5
+        setting.updown_payout6 = item.updown_payout6
+        setting.updown_payout7 = item.updown_payout7
+        setting.updown_payout8 = item.updown_payout8
+        setting.updown_payout9 = item.updown_payout9
+        setting.updown_payout10 = item.updown_payout10
+        setting.slot_anim_step_ms = item.slot_anim_step_ms
+        setting.slot_anim_steps1 = item.slot_anim_steps1
+        setting.slot_anim_steps2 = item.slot_anim_steps2
+        setting.slot_anim_steps3 = item.slot_anim_steps3
+        setting.slot_anim_stagger_ms = item.slot_anim_stagger_ms
+        setting.slot_anim_extra_prob = item.slot_anim_extra_prob
+        setting.slot_anim_extra_pct_min = item.slot_anim_extra_pct_min
+        setting.slot_anim_extra_pct_max = item.slot_anim_extra_pct_max
+        setting.slot_anim_smooth_strength = item.slot_anim_smooth_strength
+        setting.slot_anim_match_prob = item.slot_anim_match_prob
+        setting.slot_anim_match_min_pct = item.slot_anim_match_min_pct
+        setting.slot_anim_match_max_pct = item.slot_anim_match_max_pct
+        setting.slot_anim_match7_min_pct = item.slot_anim_match7_min_pct
+        setting.slot_anim_match7_max_pct = item.slot_anim_match7_max_pct
+        setting.slot_anim_extra25_prob = item.slot_anim_extra25_prob
+        setting.slot_anim_extra25_pct = item.slot_anim_extra25_pct
+        setting.slot_anim_smooth_threshold = item.slot_anim_smooth_threshold
+        setting.bias_rules = json.dumps(item.bias_rules or [], ensure_ascii=False) if isinstance(item.bias_rules, list) else str(item.bias_rules or "[]")
         setting.updated_at = datetime.utcnow()
         updated_items.append(setting)
     db.commit()
     return updated_items
+
+
+@app.get("/global_settings", response_model=schemas.GlobalSettingItem)
+def get_global_settings(db: Session = Depends(get_db), admin=Depends(require_admin)):
+    gs = db.query(models.GlobalSetting).filter(models.GlobalSetting.id == 1).first()
+    if not gs:
+        gs = models.GlobalSetting(id=1, min_bet=1, max_bet=10000)
+        db.add(gs)
+        db.commit()
+        db.refresh(gs)
+    return gs
+
+
+@app.post("/global_settings", response_model=schemas.GlobalSettingItem)
+def update_global_settings(
+    payload: schemas.GlobalSettingItem,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    gs = db.query(models.GlobalSetting).filter(models.GlobalSetting.id == 1).first()
+    if not gs:
+        gs = models.GlobalSetting(id=1)
+        db.add(gs)
+    gs.min_bet = payload.min_bet
+    gs.max_bet = payload.max_bet
+    gs.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(gs)
+    return gs
