@@ -13,6 +13,39 @@ uvicorn server.main:app --reload --host 0.0.0.0 --port 8000
 - 유저 페이지: `http://localhost:8000/game`
 - 경마 검증/리플레이: `http://localhost:8000/horse-verify`
 
+## 네트워크/접속 시나리오별 가이드
+> 서버(uvicorn)는 메인 PC 1대에서만 실행하고, 포트는 8000을 그대로 사용한다고 가정합니다.
+
+1) **같은 PC에서만 사용**  
+   - `http://localhost:8000/admin`, `http://localhost:8000/game` 접속.
+
+2) **공유기/사내 LAN에 여러 PC 연결**  
+   - 메인 PC에서 `ipconfig`(Windows) 또는 `ifconfig`/`ip a`(macOS/Linux)로 IPv4 확인(보통 192.168.x.x).  
+   - 서브 PC 브라우저: `http://<메인PC-IP>:8000/admin`(관리), `http://<메인PC-IP>:8000/game`(게임).  
+   - 방화벽에서 포트 8000 인바운드를 “개인/사설 네트워크”에 허용.
+
+3) **모바일 핫스팟(iPhone/Android)으로 여러 PC 연결**  
+   - 핫스팟을 켜고 메인·서브 PC 모두 같은 SSID에 연결.  
+   - 메인 PC IP 확인: Windows `ipconfig` → “무선 LAN 어댑터 Wi‑Fi” IPv4(보통 172.20.10.x), macOS/Linux는 `ifconfig`/`ip a`.  
+   - 서브 PC/폰에서 `http://<해당 IP>:8000/admin` / `http://<해당 IP>:8000/game`.  
+   - 핫스팟을 껐다 켜면 IP가 바뀌므로 매번 `ipconfig`로 재확인.  
+   - Windows 방화벽에서 8000 인바운드 허용 필요 시 추가.
+
+4) **관리 페이지는 메인 PC에서만 열고 싶을 때**  
+   - `ADMIN_SECRET`를 강하게 설정하고 공유 금지.  
+   - 네트워크 장비에서 IP 필터링 가능하면 `/admin` 접근을 메인 PC IP만 허용(선택).  
+   - 다른 PC는 `http://<메인PC-IP>:8000/game`만 안내.
+
+5) **계정·포인트 흐름**  
+   - 계정 생성/포인트 조정: 메인 PC에서 `/admin` → “관리자 비밀번호” 입력 후 사용.  
+   - 게임: 서브 PC가 `/game`에서 로그인→플레이→결과/포인트가 메인 DB에 바로 적재.  
+   - 경품 교환 시 자동 차감 기능은 없음. 교환 후 `/admin`에서 해당 사용자에 “±포인트”로 차감.
+
+6) **환경변수 권장값**  
+   - `ADMIN_SECRET`: 관리자 비밀번호(필수 변경).  
+   - `TOKEN_SECRET`: 토큰 서명 키(원격 접속 시 변경 추천).  
+   - 설정 예: `set ADMIN_SECRET=강한패스워드`(Windows CMD) / `export ADMIN_SECRET=강한패스워드`(bash/zsh).
+
 ## 프로젝트 구조
 - `server/` FastAPI 백엔드
   - `main.py` 엔트리(라우팅·정적·템플릿)
