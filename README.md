@@ -2,6 +2,10 @@
 
 계정(이름+PIN) 기반 가상 포인트 카지노 시뮬레이터입니다. 학생은 로그인 후 베팅·게임을 진행하고, 서버가 자동으로 포인트를 증감합니다. 관리자는 계정/포인트 관리와 게임 보정 설정을 담당합니다.
 
+```bash
+pip install -r requirements.txt
+```
+
 ## 실행/접속
 ```bash
 uvicorn server.main:app --reload --host 0.0.0.0 --port 8000
