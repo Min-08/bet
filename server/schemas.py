@@ -4,7 +4,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
-GameID = Literal["updown", "slot", "baccarat"]
+GameID = Literal["updown", "slot", "baccarat", "horse"]
 
 
 class SessionCreate(BaseModel):
@@ -218,6 +218,53 @@ class UpdownRequest(GameBaseRequest):
     guesses: List[int]
 
 
+# Horse session models (new spec)
+class HorseStatsModel(BaseModel):
+    speed: int
+    accel: int
+    stamina: int
+    stability: int
+    cornering: int
+
+
+class HorseInfo(BaseModel):
+    id: str
+    name: str
+    stats: HorseStatsModel | None = None
+
+
+class HorseSessionCreateRequest(BaseModel):
+    bet_amount: int = Field(gt=0)
+
+
+class HorseSessionCreateResponse(BaseModel):
+    session_id: str
+    seed: int
+    horses: List[HorseInfo]
+    track_length: float
+    laps: int
+    map_type: str
+    timeout_seconds: int
+
+
+class HorseSessionLockRequest(BaseModel):
+    session_id: str
+    horse_id: str
+    bet_amount: int = Field(gt=0)
+
+
+class HorseSessionHeartbeatRequest(BaseModel):
+    session_id: str
+
+
+class HorseSessionFinishRequest(BaseModel):
+    session_id: str
+    # 클라이언트는 더 이상 결과 데이터를 보낼 필요가 없다(서버 권위 시뮬).
+
+
+class HorseSessionForfeitRequest(BaseModel):
+    session_id: str
+
 class UpdownGuessRequest(BaseModel):
     guess: int
 
@@ -232,6 +279,15 @@ class BaccaratRequest(GameBaseRequest):
 
 class SessionResolveRequest(BaseModel):
     session_id: str
+
+
+class HorseStartRequest(GameBaseRequest):
+    pass
+
+
+class HorseResolveRequest(BaseModel):
+    session_id: str
+    horse_id: str
 
 
 class GameResponse(BaseModel):

@@ -1,6 +1,6 @@
 # Virtual Probability Simulation
 
-계정(이름+PIN) 기반 가상 포인트 시뮬레이터입니다. 학생은 로그인 후 베팅·게임을 진행하고, 서버가 자동으로 포인트를 증감합니다. 관리자는 계정/포인트 관리와 게임 보정 설정만 담당합니다.
+계정(이름+PIN) 기반 가상 포인트 카지노 시뮬레이터입니다. 학생은 로그인 후 베팅·게임을 진행하고, 서버가 자동으로 포인트를 증감합니다. 관리자는 계정/포인트 관리와 게임 보정 설정을 담당합니다.
 
 ## 실행/접속
 ```bash
@@ -8,42 +8,67 @@ uvicorn server.main:app --reload --host 0.0.0.0 --port 8000
 # 관리자 비밀번호 기본값: adminpass (환경변수 ADMIN_SECRET로 변경)
 # 토큰 서명 키: TOKEN_SECRET (기본 dev-secret)
 ```
-- 관리자 페이지: `http://localhost:8000/admin` (또는 `http://<서버IP>:8000/admin`)
-- 게임 설정 페이지: `http://localhost:8000/admin/settings` (관리자 비밀번호 입력 후 접근)
-- 유저 페이지: `http://localhost:8000/game` (또는 `http://<서버IP>:8000/game`)
+- 관리자 페이지: `http://localhost:8000/admin`
+- 게임 설정: `http://localhost:8000/admin/settings`
+- 유저 페이지: `http://localhost:8000/game`
+- 경마 검증/리플레이: `http://localhost:8000/horse-verify`
 
-## 사용자 흐름
-1) 로그인: 이름 + 4자리 PIN → Bearer 토큰 발급
-2) 대시보드: 현재 포인트 표시, 게임 3종(업다운/슬롯/바카라) 카드 노출
+## 프로젝트 구조
+- `server/` FastAPI 백엔드
+  - `main.py` 엔트리(라우팅·정적·템플릿)
+  - `database.py` DB 세션/초기화
+  - `models.py` SQLAlchemy 모델
+  - `schemas.py` Pydantic 스키마
+  - `static/js/admin.js`, `static/js/settings.js`, `static/css/admin.css`
+  - `templates/admin.html`, `templates/settings.html`
+- `webclient/` 게임 클라이언트 정적 자원
+  - `index.html` 부트스트랩 기반 화면
+  - `static/js/app.js` 게임 로직 + 무한 슬라이더 제어
+  - `static/css/style.css` 스타일
+  - `static/img/` 게임 카드 아이콘
+  - `react/` React+TS 무한 캐러셀 참고용(현재 번들 미사용)
+- 루트 스크립트: `run_server.sh`, `run_server.bat`
+- DB: `bet_simulator.db` (SQLite)
+
+## 사용자 흐름 (웹 클라이언트)
+1) 로그인: 이름 + 4자리 PIN → Bearer 토큰 발급·저장
+2) 대시보드: 현재 포인트, 게임 카드(업다운/슬롯/바카라 + 더미 2종) 슬라이더 노출
 3) 게임 진행:
-   - 업다운: 베팅 후 “게임 시작” → 플레이 화면에서 1~5회 숫자 입력/판정, 최종 배당·잔액 표시
-   - 슬롯: 스핀 애니메이션 후 결과·배당·잔액 표시
-   - 바카라: 카드 공개 애니메이션, Player/Banker/Tie 배팅 결과·배당·잔액 표시
-4) 포인트 증감은 서버가 즉시 처리하며, 결과/잔액이 화면에 반영됩니다.
+   - 업다운: 베팅 → 최대 5회 숫자 입력/판정 → 최종 배당·잔액 표시
+   - 슬롯: 스핀 애니메이션 → 결과·배당·잔액 표시
+   - 바카라: 카드 공개 애니메이션 → 결과·배당·잔액 표시
+4) 포인트 증감은 서버가 즉시 계산되어 화면에 반영
+
+## 게임 카드 슬라이더 (무한 마키)
+- `app.js`의 `setupGameMarquee`: 카드 배열을 2배 복제한 flex 트랙을 `translateX`로 이동하며, 트랙 길이 기준으로 오프셋을 래핑해 시각적 점프 없이 이어짐.
+- hover 시 즉시 정지, 영역을 벗어나면 지연 후 재개.
+- 영역 내 휠 입력은 세로 스크롤 대신 가로 이동으로 변환하고, 한 번 휠을 돌리면 영역 밖으로 나갔다 다시 들어올 때까지 자동 이동을 멈춤.
+- 게임을 선택해 진행하는 동안 자동 이동을 정지시켜 플레이에 집중 가능.
+- 클릭/키보드 포커스/버튼 등 카드 내 인터랙션은 그대로 동작.
 
 ## 관리자 기능
-- 관리자 인증: 요청 헤더 `admin-secret: <비밀번호>` (기본 adminpass)
+- 헤더 `admin-secret: <비밀번호>` (기본 `adminpass`)
 - 계정 생성/목록/삭제
 - 포인트 조정(충전/차감) 및 트랜잭션 로그 조회(유형, 게임, 금액, 잔액 변동, 메모, 시간)
-- 게임 보정 설정(카지노 우세/유저 우세, 최소·최대 베팅 기준, 가중치%)
+- 게임 보정 설정(카지노 우세/유저 우세, 최소·최대 베팅, 가중치%)
 
 ## 주요 API
 - 인증
-  - `POST /api/login {name, pin}` → `{token, user}` (Bearer 토큰)
+  - `POST /api/login {name, pin}` → `{token, user}`
   - `GET /api/me` → 현재 유저 정보
 - 게임
-  - `POST /api/game/updown/start?bet_amount=`: 업다운 시작(타깃/시도 초기화)
-  - `POST /api/game/updown/guess {guess}`: 업다운 판정(진행/최종)
+  - `POST /api/game/updown/start?bet_amount=` 업다운 시작
+  - `POST /api/game/updown/guess {guess}` 업다운 판정(진행/최종)
   - `POST /api/game/slot {bet_amount}`
-  - `POST /api/game/baccarat {bet_amount, bet_choice}` (Player/Banker/Tie)
-  - 공통 응답: `{result, payout_multiplier, payout_amount, delta, balance, detail}` (업다운 진행 중은 `result: pending`)
-- 관리자 (헤더 `admin-secret` 필수)
+  - `POST /api/game/baccarat {bet_amount, bet_choice}`
+  - 공통 응답: `{result, payout_multiplier, payout_amount, delta, balance, detail}` (`result: pending`이면 진행 중)
+- 관리자 (헤더 `admin-secret`)
   - `POST /api/admin/users {name, pin, initial_balance}`
   - `GET /api/admin/users?search=`
   - `POST /api/admin/users/{id}/adjust_balance {delta, reason}`
   - `DELETE /api/admin/users/{id}`
   - `GET /api/admin/users/{id}/transactions?limit=20`
-  - `GET /game_settings`, `POST /game_settings {settings: [...]}`
+  - `GET /game_settings`, `POST /game_settings {settings: [...]}` (게임 보정)
 
 ## DB 스키마 (SQLite `bet_simulator.db`)
 - `users(id, name, pin, balance, created_at, updated_at)`
@@ -51,16 +76,69 @@ uvicorn server.main:app --reload --host 0.0.0.0 --port 8000
 - `game_results(id, user_id, game_id, bet_amount, bet_choice, result, payout_multiplier, payout_amount, detail, timestamp)`
 - `game_settings(game_id unique, risk_enabled, risk_threshold, casino_advantage_percent, assist_enabled, assist_max_bet, player_advantage_percent, updated_at)`
 
-## 게임 규칙 요약
-- 업다운: 1~100 난수, 최대 5회. 배당 1~5회 차례로 7x/5x/4x/3x/2x, 실패 0x. 인터랙티브로 한 번에 한 추측씩 진행.
-- 슬롯: 심볼 A,B,C,D,7 각 릴 균등. 777=10x, 같은 심볼 3개=5x, 같은 심볼 2개=1.5x, 그 외 0x.
-- 바카라: 표준 드로우 규칙(네추럴 8/9 즉시 종료, Player 0~5 드로우, Banker 표준 3rd 카드 규칙), 배당 Player 1:1(수령 2x), Banker 1:1-커미션(수령 1.95x), Tie 8:1. 카드 공개 애니메이션 포함.
+## 게임별 상세 규칙/계산
 
-## 보정(옵션)
-- 카지노 리스크 보정: 최소 베팅 이상일 때 카지노 쪽으로 승률 가중
-- 유저 확률 보정: 최대 베팅 이하일 때 플레이어 쪽으로 승률 가중
-- 관리자 페이지의 게임 세부 설정에서 게임별로 조정
+### 업다운 (Up&Down 숫자 맞히기)
+- 시작: `POST /api/game/updown/start?bet_amount=` → 베팅 차감, 서버가 `target ∈ [1,100]` 설정 후 세션 저장.
+- 배당 시퀀스: 게임 설정의 `updown_payout1~10`을 첫 번째 0 이하가 나오기 전까지만 사용. 기본값 [7,5,4,3,2] → 최대 5회 시도.
+- 판정: `POST /api/game/updown/guess {guess}`마다 시도 수+1, `hint`는 UP/DOWN/CORRECT. 맞히면 시도 번호에 따른 배당, 전부 실패 시 0배.
+- 응답 detail: `target, guesses[], attempts, max_attempts, hint`, `payout_multiplier`, `delta`, `balance`.
 
-## 네트워크 안내
-- 같은 PC: `localhost:8000`
-- 같은 네트워크의 다른 PC: `http://<서버IP>:8000` (방화벽에서 8000 포트 허용 필요)
+### 슬롯 머신
+- 시작: `POST /api/game/slot {bet_amount}`. 베팅 선차감.
+- 심볼: A,B,C,D,7 균등 랜덤 3개.
+- 배당:
+  - 777 세 개: `slot_payout_triple_seven` (기본 10.0x)
+  - 같은 심볼 3개: `slot_payout_triple_same` (기본 5.0x)
+  - 같은 심볼 2개: `slot_payout_double_same` (기본 1.5x)
+  - 나머지 0x
+- 잭팟(옵션): `jackpot_enabled`일 때 베팅의 `jackpot_contrib_percent%` 적립, `jackpot_trigger_percent%` 확률로 풀 전체 지급 후 0 초기화. 잭팟 시 `payout_amount_override=풀 금액`.
+- detail: `symbols[3], jackpot_win, jackpot_amount, pool`.
+
+### 바카라
+- 간단 호출: `POST /api/game/baccarat {bet_amount, bet_choice(player|banker|tie)}` (세션 플로우도 지원).
+- 덱: 2벌(104장) 셔플, 카드 값 A=1, 2~9=숫자, 10/J/Q/K=0.
+- 드로우: 내추럴(8/9)이 아니면 표준 3rd-card 룰 적용(플레이어 ≤5 드로우, 뱅커는 플레이어 3번째 카드 값에 따른 조건).
+- 결과: player/banker/tie. 최대 200회 시뮬해 목표 결과(바이어스용)가 있으면 그 결과가 나올 때까지 반복.
+- 배당 기본값: Player 2.0x 수령, Banker 1.95x 수령, Tie 8.0x 수령(틀리면 0). detail: `player_hand[], banker_hand[], player_value, banker_value, outcome`.
+
+### 경마 (Horse Racing)
+- 흐름: 세션 생성→말 선택→시작(베팅 차감)→서버 시뮬→타임라인/결과 반환. 승리 시 3.0x, 패배 0x.
+- 트랙/시간: 길이 1000m, 랩 2, dt=1/60s, 타임라인 샘플 0.2s.
+- 스탯/특성: speed/accel/stamina/stability/cornering(0~100) + 숨은 특성(heat_resist∈[0.9,1.2], recover_rate∈[0.85,1.1], luck∈[0.8,1.2], tactic front/stalker/closer), 컨디션 F는 안정성 기반 로그정규.
+- 환경: 바람 N(0,0.08)→windFactor=max(0.2,1+wind), 경사 프로파일(0~0.25:+0%, 0.25~0.5:+1%, 0.5~0.75:-0.8%, 0.75~1:+0%).
+- 주요 수식/동역학:
+  - 정규화: `Sn=speed/100`, `An=accel/100`, `Tn=stamina/100`, `Cn=cornering/100`
+  - 효율: `T_eff=1-exp(-K_T*Tn)`, `C_eff=1-exp(-K_C*Cn)`, `R_eff=1-exp(-K_R*stability/100)`
+  - 컨디션: `sigma = sigma_min + (sigma_max-sigma_min)*(1-R_eff)`, `F=exp(N(0,sigma^2))`
+  - 전술 목표속도(회복 기준): `progress = x/(2L)`, `Vcap_base=V0+V1*sqrt(Sn)`  
+    front: `Vcap_base*0.9` (progress>0.65 ⇒ *0.92), stalker: `Vcap_base*0.85` (progress>0.5 ⇒ *1.05), closer: `Vcap_base*(0.75+0.15*progress)`
+  - 포화/출력: `Vcap=Vcap_base`, `eta=1.8+1.2*(1-An)`, `sat=max(0,1-(v/Vcap)^eta)`  
+    `Pmax=P0+P1*Sn`, `P=Pmax*F*(0.35+0.65*E)`, `power_push=P*sat`
+  - 항력/상호작용: `drag=(D0*v^2 + D1*v^3)*windFactor`, 경사 `drag+=9.8*slope*v/Vref`, 슬립스트림(거리<20m) → `drag*=0.9`, `H+=0.01` (+로그)
+  - 에너지/열:  
+    `dE=[e0*(1+K_SD*Sn)*(v/Vref)^gamma + e1*isCorner*(v/Vref)^gamma2*(1-0.5*T_eff)]*dt`  
+    `dH=H0*isCorner*(v/Vref)^2*(1-C_eff)*(1+HT_TWEAK*(1-T_eff))*dt`  
+    느릴 때(v<target_v*0.6) → `dE,dH *= 0.8*recover_rate`; 갱신 `E=clamp(E-dE,0,1)`, `H=max(0, H + dH - Hdecay*H*dt*heat_resist)`  
+    과열 캡 `heat_cap=max(0.6,1-0.2*heat_resist)` 넘으면 `power_push*=0.75`
+  - 코너: `isCorner`는 lapFrac∈[0.4,0.5)∪[0.9,1]  
+    `a_lat_max=ALAT0+ALAT1*C_eff^1.1`, `a_lat_eff=a_lat_max/(1+H)`, `v_corner_max=sqrt(a_lat_eff/max(kappa,eps))` (`kappa=KAPPA` in corner)  
+    제동 `corner_brake = (v>v_corner_max) ? Bc*(v-v_corner_max)^2 : 0`  
+    코너 미스: `excess=(v - v_corner_max)/v_corner_max`; excess>0.25 → `H+=0.15*excess`, `v*=(1-0.08*excess)` (이벤트 로그)
+  - 이벤트(포아송):  
+    `lambda_stumble=0.003*(1+(1-R_eff))` (직전 STUMBLE시 동일 배수 곱), 발동확률 `p=1-exp(-λ*dt)` → `power_push*=(1-mag)`, `v*=(1-0.5*mag)`  
+    BOOST: `lambda=0.0025*luck` → `power_push*=(1+mag)`  
+    CONTACT: 거리<6m, `lambda=0.02` → `v*=(1-hit)`  
+    SLIP/CONTACT/STUMBLE/BOOST/CORNER_MISS/HEATCAP 모두 `{t, horse_id, kind, mag, note}` 로 기록
+  - 오버드라이브: `w_od=smoothstep(0.7,0.9,progress)`, `h_ratio=H/(H+OD_H_HALF)`, `spurt_gate=clamp(0.35, 0.7+0.3*E-0.2*h_ratio)`  
+    `iod = w_od * clamp(0.35+0.65*T_eff - 0.3*(1-R_eff)) * smoothstep(0.12,0.3,E) * (1 - exp(-K_A*An)) * spurt_gate`  
+    `eta_eff=max(OD_ETA_MIN, eta*(1-OD_PHI*iod))`, `sat_eff=max(0,1-(v/Vcap)^eta_eff)`  
+    `power_push *= (sat_eff/sat if sat>1e-6 else 1); power_push *= (1+OD_ALPHA*iod)`  
+    `dE += OD_LAMBDA*iod*(v/Vref)^OD_RHO*dt`, `dH *= (1+OD_MU*iod)`
+  - 적분: `a = power_push - drag - corner_brake`; `v = max(0, v + a*dt)`, `x += v*dt`; `x>=2L` → finish_time=t
+- 결과/표시: 타임라인 `positions/speeds/energy/heat`, 이벤트 로그, 말별 컨디션·스탯, 우승/선택 말 강조(우승 초록, 선택 노랑). 프런트 애니메이션 기본 4x 속도.
+- 로그/결과: 타임라인 `positions/speeds/energy/heat`, 이벤트 로그, 말별 컨디션·스탯·우승 말, 선택 말 강조(클라에서 선택 말 노랑, 우승 말 초록).
+
+## 추가 참고 (React 샘플)
+- `webclient/react/InfiniteGameCarousel.tsx`: React + TS + Tailwind 기반 무한 캐러셀 참고용
+- `webclient/react/ExampleCarouselUsage.tsx`: 샘플 사용 코드

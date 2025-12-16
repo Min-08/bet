@@ -29,14 +29,61 @@ GAME_LABELS: Dict[str, str] = {
     "updown": "업다운",
     "slot": "슬롯 머신",
     "baccarat": "바카라",
+    "horse": "온라인 경마",
 }
 SECRET_KEY = os.environ.get("TOKEN_SECRET", "dev-secret")
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "adminpass")
 UPDOWN_STATE: Dict[int, dict] = {}
 SLOT_PENDING: Dict[str, dict] = {}
 BACCARAT_PENDING: Dict[str, dict] = {}
+HORSE_PENDING: Dict[str, dict] = {}
+HORSE_SESSIONS: Dict[str, dict] = {}
 TOKEN_PREFIX = "Bearer "
+
+# Horse race simulation constants (pure probability engine)
+HORSE_TRACK_LENGTH = 1000.0
+HORSE_DT = 1 / 60
+HORSE_MAX_TICKS = 20000
+HORSE_TIMELINE_INTERVAL = 0.2
+HORSE_SEGMENTS = [
+    (0.0, 0.40, "straight"),
+    (0.40, 0.5, "corner"),
+    (0.5, 0.90, "straight"),
+    (0.90, 1.0, "corner"),
+]
+HORSE_LAPS = 2
+HORSE_STAT_TOTAL = 300
+HORSE_MIN_STAT = 20
+HORSE_HEARTBEAT_TIMEOUT = 8  # seconds
+OD_ALPHA = 0.15
+OD_PHI = 0.35
+OD_ETA_MIN = 1.0
+OD_LAMBDA = 0.035
+OD_RHO = 2.0
+OD_MU = 0.6
+OD_H_HALF = 1.5
+HT_TWEAK = 0.15
+SPD_K_SD = 0.45
+ACC_K_A = 1.4
+K_T = 1.2
+K_C = 1.3
+K_R = 1.4
+SIGMA_MIN = 0.03
+SIGMA_MAX = 0.25
+NOISE_MAX = 0.05
 BIAS_COOLDOWN_STATE: dict[str, float] = {}
+HORSE_MAPS: Dict[str, dict] = {
+    "oval": {
+        "id": "oval",
+        "name": "OVAL",
+        "corner_count": 2,
+        "weights": {"speed": 1.0, "accel": 0.9, "stamina": 0.5, "cornering": 0.6, "stability": -0.25},
+        "wind_mean": 0.0,
+        "wind_sigma": 0.08,
+        "slope_profile": [(0.0, 0.25, 0.0), (0.25, 0.5, 0.01), (0.5, 0.75, -0.008), (0.75, 1.0, 0.0)],
+    },
+    # 향후 L/U 맵 추가 예정
+}
 
 
 def to_kst_str(dt: datetime) -> str:
@@ -367,6 +414,55 @@ def ensure_default_game_settings(db: Session) -> None:
                 ]
             ),
         },
+        "horse": {
+            "risk_enabled": True,
+            "risk_threshold": 1000,
+            "casino_advantage_percent": 0.0,
+            "assist_enabled": False,
+            "assist_max_bet": 50,
+            "player_advantage_percent": 0.0,
+            "min_bet": 1,
+            "max_bet": 10000,
+            "maintenance_mode": False,
+            "slot_payout_triple_seven": 10.0,
+            "slot_payout_triple_same": 5.0,
+            "slot_payout_double_same": 1.5,
+            "baccarat_payout_player": 2.0,
+            "baccarat_payout_banker": 1.95,
+            "baccarat_payout_tie": 8.0,
+            "jackpot_enabled": False,
+            "jackpot_contrib_percent": 0.0,
+            "jackpot_trigger_percent": 0.0,
+            "jackpot_pool": 0.0,
+            "updown_payout1": 7.0,
+            "updown_payout2": 5.0,
+            "updown_payout3": 4.0,
+            "updown_payout4": 3.0,
+            "updown_payout5": 2.0,
+            "updown_payout6": 0.0,
+            "updown_payout7": 0.0,
+            "updown_payout8": 0.0,
+            "updown_payout9": 0.0,
+            "updown_payout10": 0.0,
+            "slot_anim_step_ms": 60,
+            "slot_anim_steps1": 24,
+            "slot_anim_steps2": 34,
+            "slot_anim_steps3": 48,
+            "slot_anim_stagger_ms": 0,
+            "slot_anim_extra_prob": 0.2,
+            "slot_anim_extra_pct_min": 0.0,
+            "slot_anim_extra_pct_max": 0.1,
+            "slot_anim_smooth_strength": 1.0,
+            "slot_anim_match_prob": 1.0,
+            "slot_anim_match_min_pct": 0.1,
+            "slot_anim_match_max_pct": 0.4,
+            "slot_anim_match7_min_pct": 0.3,
+            "slot_anim_match7_max_pct": 0.6,
+            "slot_anim_extra25_prob": 0.15,
+            "slot_anim_extra25_pct": 0.25,
+            "slot_anim_smooth_threshold": 0.25,
+            "bias_rules": "[]",
+        },
     }
     for game_id, cfg in defaults.items():
         existing = (
@@ -671,6 +767,14 @@ def game_client() -> FileResponse:
     if not game_page.exists():
         raise HTTPException(status_code=404, detail="Game client not found.")
     return FileResponse(game_page)
+
+
+@app.get("/horse-verify", include_in_schema=False)
+def horse_verify_page() -> FileResponse:
+    page = BASE_DIR / "static" / "horse_verify.html"
+    if not page.exists():
+        raise HTTPException(status_code=404, detail="Verify page not found.")
+    return FileResponse(page)
 
 
 @app.post("/create_session", response_model=schemas.SessionResponse)
@@ -1505,6 +1609,343 @@ def api_game_baccarat(
     return run_baccarat_round(db, current_user, setting_dict, payload.bet_amount, payload.bet_choice, charge_bet=True)
 
 
+@app.get("/api/horse/history")
+def api_horse_history(limit: int = 100, db: Session = Depends(get_db)):
+    limit = min(max(limit, 1), 500)
+    rows = (
+        db.query(models.GameResult)
+        .filter(models.GameResult.game_id == "horse")
+        .order_by(models.GameResult.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    history = []
+    for r in rows:
+        detail = r.detail if isinstance(r.detail, dict) else {}
+        seed = detail.get("race_seed")
+        winner_id = detail.get("winner_id")
+        bet_choice = detail.get("bet_choice")
+        history.append(
+            {
+                "id": r.id,
+                "seed": seed,
+                "winner_id": winner_id,
+                "bet_choice": bet_choice,
+                "bet_amount": r.bet_amount,
+                "payout_amount": r.payout_amount,
+                "result": r.result,
+                "timestamp": r.timestamp,
+            }
+        )
+    return {"history": history}
+
+
+def _load_horse_result_by_id(db: Session, game_result_id: int) -> models.GameResult:
+    row = (
+        db.query(models.GameResult)
+        .filter(models.GameResult.id == game_result_id, models.GameResult.game_id == "horse")
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="경마 기록을 찾을 수 없습니다.")
+    return row
+
+
+def _parse_detail(detail_raw):
+    if isinstance(detail_raw, dict):
+        return detail_raw
+    try:
+        return json.loads(detail_raw or "{}")
+    except Exception:
+        return {}
+
+
+@app.get("/api/horse/replay/{game_result_id}")
+def api_horse_replay(game_result_id: int, db: Session = Depends(get_db)):
+    row = _load_horse_result_by_id(db, game_result_id)
+    detail = _parse_detail(row.detail)
+    return {
+        "id": row.id,
+        "seed": detail.get("race_seed"),
+        "detail": detail,
+        "bet_amount": row.bet_amount,
+        "payout_amount": row.payout_amount,
+        "result": row.result,
+        "timestamp": row.timestamp,
+    }
+
+
+@app.get("/api/horse/replay/by-seed/{seed}")
+def api_horse_replay_by_seed(seed: str, db: Session = Depends(get_db)):
+    rows = (
+        db.query(models.GameResult)
+        .filter(models.GameResult.game_id == "horse")
+        .order_by(models.GameResult.timestamp.desc())
+        .limit(1000)
+        .all()
+    )
+    for row in rows:
+        detail = _parse_detail(row.detail)
+        if str(detail.get("race_seed")) == str(seed):
+            return {
+                "id": row.id,
+                "seed": detail.get("race_seed"),
+                "detail": detail,
+                "bet_amount": row.bet_amount,
+                "payout_amount": row.payout_amount,
+                "result": row.result,
+                "timestamp": row.timestamp,
+            }
+    raise HTTPException(status_code=404, detail="해당 시드의 경마 기록을 찾을 수 없습니다.")
+
+
+@app.post("/api/game/horse/start", response_model=schemas.GameResponse)
+def api_game_horse_start(
+    payload: schemas.HorseStartRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    raise HTTPException(status_code=410, detail="Deprecated endpoint. Use /api/horse/session/* APIs.")
+
+
+# =========================
+# New horse session workflow (fixed payout, client-side sim)
+# =========================
+
+
+def sweep_horse_sessions():
+    now = datetime.utcnow()
+    expired = []
+    for sid, sess in list(HORSE_SESSIONS.items()):
+        if sess.get("status") == "RUNNING":
+            last = sess.get("last_heartbeat") or sess.get("created_at") or now
+            if (now - last).total_seconds() > HORSE_HEARTBEAT_TIMEOUT:
+                sess["status"] = "FORFEIT"
+                sess["ended_at"] = now
+                expired.append((sid, sess))
+    return expired
+
+
+def ensure_no_active_horse_session(user_id: int):
+    for sess in HORSE_SESSIONS.values():
+        if sess.get("user_id") == user_id and sess.get("status") in ("CREATED", "RUNNING"):
+            raise HTTPException(status_code=400, detail="진행 중인 경마 세션이 있습니다.")
+
+
+def smoothstep(edge0: float, edge1: float, t: float) -> float:
+    u = min(1.0, max(0.0, (t - edge0) / (edge1 - edge0)))
+    return u * u * (3 - 2 * u)
+
+
+def eff_exp(raw: float, k: float) -> float:
+    return 1 - math.exp(-k * raw)
+
+
+@app.post("/api/horse/session/create", response_model=schemas.HorseSessionCreateResponse)
+def api_horse_session_create(
+    payload: schemas.HorseSessionCreateRequest,
+    current_user: models.User = Depends(get_current_user),
+):
+    sweep_horse_sessions()
+    ensure_no_active_horse_session(current_user.id)
+    session_id = str(uuid.uuid4())
+    seed = random.getrandbits(32)
+    horses = generate_horse_pool(seed)
+    map_type = "oval"
+    now = datetime.utcnow()
+    HORSE_SESSIONS[session_id] = {
+        "user_id": current_user.id,
+        "bet_amount": payload.bet_amount,
+        "seed": seed,
+        "horses": horses,
+        "map_type": map_type,
+        "track_length": HORSE_TRACK_LENGTH,
+        "laps": HORSE_LAPS,
+        "status": "CREATED",
+        "created_at": now,
+        "last_heartbeat": now,
+        "selected_horse": None,
+    }
+    # 클라이언트에는 최소 정보만 노출 (id/name만 전달)
+    horses_public = [{"id": h["id"], "name": h.get("name", h["id"])} for h in horses]
+    return schemas.HorseSessionCreateResponse(
+        session_id=session_id,
+        seed=seed,
+        horses=horses_public,
+        track_length=HORSE_TRACK_LENGTH,
+        laps=HORSE_LAPS,
+        map_type=map_type,
+        timeout_seconds=HORSE_HEARTBEAT_TIMEOUT,
+    )
+
+
+@app.post("/api/horse/session/lock")
+def api_horse_session_lock(
+    payload: schemas.HorseSessionLockRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sweep_horse_sessions()
+    sess = HORSE_SESSIONS.get(payload.session_id)
+    if not sess or sess.get("user_id") != current_user.id:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    if sess.get("status") not in ("CREATED",):
+        raise HTTPException(status_code=400, detail="세션 상태가 올바르지 않습니다.")
+    if payload.bet_amount != sess.get("bet_amount"):
+        raise HTTPException(status_code=400, detail="베팅 금액이 세션과 일치하지 않습니다.")
+    if current_user.balance < payload.bet_amount:
+        raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
+    horse_ids = {h["id"] for h in sess.get("horses", [])}
+    if payload.horse_id not in horse_ids:
+        raise HTTPException(status_code=400, detail="선택한 말이 유효하지 않습니다.")
+
+    # 차감
+    apply_balance_change(
+        db,
+        current_user,
+        -payload.bet_amount,
+        description="horse:lock",
+        game_type="horse",
+        result_type="game",
+    )
+    db.commit()
+    db.refresh(current_user)
+
+    sess["status"] = "RUNNING"
+    sess["selected_horse"] = payload.horse_id
+    sess["last_heartbeat"] = datetime.utcnow()
+    return {"status": "ok", "balance": current_user.balance}
+
+
+@app.post("/api/horse/session/heartbeat")
+def api_horse_session_heartbeat(
+    payload: schemas.HorseSessionHeartbeatRequest,
+    current_user: models.User = Depends(get_current_user),
+):
+    expired = sweep_horse_sessions()
+    sess = HORSE_SESSIONS.get(payload.session_id)
+    if not sess or sess.get("user_id") != current_user.id:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    if sess.get("status") == "RUNNING":
+        sess["last_heartbeat"] = datetime.utcnow()
+    return {"status": sess.get("status"), "expired": [sid for sid, _ in expired]}
+
+
+@app.post("/api/horse/session/finish", response_model=schemas.GameResponse)
+def api_horse_session_finish(
+    payload: schemas.HorseSessionFinishRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sweep_horse_sessions()
+    sess = HORSE_SESSIONS.get(payload.session_id)
+    if not sess or sess.get("user_id") != current_user.id:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    if sess.get("status") != "RUNNING":
+        raise HTTPException(status_code=400, detail="세션 상태가 올바르지 않습니다.")
+    bet = sess.get("bet_amount", 0)
+    chosen = sess.get("selected_horse")
+    if not chosen:
+        raise HTTPException(status_code=400, detail="말을 선택하지 않았습니다.")
+
+    horses = sess.get("horses") or []
+    map_type = sess.get("map_type", "oval")
+    race_seed = sess.get("seed")
+    winner_id, events, profile, sim_detail = run_horse_race(horses, map_type, race_seed)
+    result = "win" if chosen == winner_id else "lose"
+    payout_multiplier = 3.0 if result == "win" else 0.0
+    payout_amount = bet * payout_multiplier
+
+    delta = payout_amount
+    if delta:
+        apply_balance_change(
+            db,
+            current_user,
+            delta,
+            description="horse:finish",
+            game_type="horse",
+            result_type="game",
+        )
+
+    sess["status"] = "FINISHED"
+    sess["ended_at"] = datetime.utcnow()
+    horses_public = [
+        {
+            "id": h["id"],
+            "name": h.get("name", h["id"]),
+            "stats": h.get("stats"),
+            "condition": sim_detail.get("conditions", {}).get(h["id"]),
+        }
+        for h in horses
+    ]
+    detail = {
+        "session_id": payload.session_id,
+        "horses": horses_public,
+        "map_type": map_type,
+        "map_name": profile.get("name", map_type) if isinstance(profile, dict) else map_type,
+        "race_seed": race_seed,
+        "winner_id": winner_id,
+        "bet_choice": chosen,
+        "events": events,
+        "timeline": sim_detail.get("timeline"),
+        "finish_times": sim_detail.get("finish_times"),
+        "track_length": sim_detail.get("track_length", HORSE_TRACK_LENGTH),
+        "laps": sim_detail.get("laps", HORSE_LAPS),
+    }
+    log_game_event(
+        db,
+        current_user,
+        "horse",
+        "finish",
+        {**detail, "bet_amount": bet, "result": result},
+        commit=False,
+    )
+    db.commit()
+    db.refresh(current_user)
+    return schemas.GameResponse(
+        result=result,
+        payout_multiplier=payout_multiplier,
+        payout_amount=payout_amount,
+        delta=delta,
+        balance=current_user.balance,
+        detail=detail,
+    )
+
+
+@app.post("/api/horse/session/forfeit")
+def api_horse_session_forfeit(
+    payload: schemas.HorseSessionForfeitRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sweep_horse_sessions()
+    sess = HORSE_SESSIONS.get(payload.session_id)
+    if not sess or sess.get("user_id") != current_user.id:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    if sess.get("status") in ("FINISHED", "FORFEIT"):
+        return {"status": sess.get("status")}
+    sess["status"] = "FORFEIT"
+    sess["ended_at"] = datetime.utcnow()
+    log_game_event(
+        db,
+        current_user,
+        "horse",
+        "forfeit",
+        {"session_id": payload.session_id},
+        commit=True,
+    )
+    return {"status": "FORFEIT"}
+
+
+@app.post("/api/game/horse/resolve", response_model=schemas.GameResponse)
+def api_game_horse_resolve(
+    payload: schemas.HorseResolveRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    raise HTTPException(status_code=410, detail="Deprecated endpoint. Use /api/horse/session/* APIs.")
+
+
 def apply_balance_change(
     db: Session,
     user: models.User,
@@ -1538,6 +1979,374 @@ def normalize_payouts(payouts: List[float]) -> List[float]:
             break
         normalized.append(p)
     return normalized
+
+
+def generate_horse_pool(seed: int | None = None) -> List[dict]:
+    """Generate 4 horses using fixed stat budget (sum=N) with constrained speed."""
+    rng = random.Random(seed)
+    horses = []
+    total = HORSE_STAT_TOTAL
+    min_stat = HORSE_MIN_STAT
+    min_other_sum = 4 * min_stat
+    # Base speed ensures >=50 and <=100, and spread <=30 using per-horse offset.
+    base_speed = min(70, 50 + rng.randint(0, 20))
+    for i in range(4):
+        # Speed with max spread 30
+        speed_offset = rng.randint(0, 30)
+        speed_val = min(100, base_speed + speed_offset)
+        # Ensure enough budget remains for other stats
+        max_allowed_speed = total - min_other_sum
+        if speed_val > max_allowed_speed:
+            speed_val = max(max_allowed_speed, 50)
+        remaining = total - speed_val
+        extra = max(0, remaining - min_other_sum)
+        cuts = sorted([rng.randint(0, extra) for _ in range(3)])
+        portions = [
+            cuts[0],
+            cuts[1] - cuts[0],
+            cuts[2] - cuts[1],
+            extra - cuts[2],
+        ]
+        rng.shuffle(portions)
+        stats = {
+            "speed": speed_val,
+            "accel": min_stat + portions[0],
+            "stamina": min_stat + portions[1],
+            "stability": min_stat + portions[2],
+            "cornering": min_stat + portions[3],
+        }
+        horses.append({"id": f"h{i+1}", "name": f"Horse {i+1}", "stats": stats})
+    return horses
+
+
+def run_horse_race(
+    horses: List[dict], map_key: str, seed: int | None = None
+) -> tuple[str, list, dict, dict]:
+    """
+    Horse race engine (pure physics + stochastic events) per FINAL INTEGRATED SPEC.
+    """
+    rng = random.Random(seed)
+    profile = HORSE_MAPS.get(map_key, HORSE_MAPS["oval"])
+    finish_distance = HORSE_TRACK_LENGTH * HORSE_LAPS
+    slope_profile = [
+        (0.0, 0.25, 0.0),
+        (0.25, 0.50, 0.01),
+        (0.50, 0.75, -0.008),
+        (0.75, 1.0, 0.0),
+    ]
+    wind_sigma = 0.08
+
+    def in_corner(frac: float) -> bool:
+        return any(
+            seg_type == "corner" and start <= frac < end
+            for start, end, seg_type in HORSE_SEGMENTS
+        )
+
+    def slope_at(frac: float) -> float:
+        for start, end, slope in slope_profile:
+            if start <= frac < end:
+                return slope
+        return 0.0
+
+    def condition_factor(stability: int) -> float:
+        R_eff = eff_exp(stability / 100, K_R)
+        sigma = SIGMA_MIN + (SIGMA_MAX - SIGMA_MIN) * (1 - R_eff)
+        z = rng.normalvariate(0, sigma)
+        return math.exp(z)
+
+    # Constants
+    Vref = 15.0
+    gamma = 2.2
+    gamma2 = 2.6
+    e0 = 0.015
+    e1 = 0.035
+    P0 = 8.0
+    P1 = 10.0
+    V0 = 14.0
+    V1 = 6.0
+    D0 = 0.010
+    D1 = 0.0006
+    Bc = 2.3
+    KAPPA = 0.03
+    eps = 1e-6
+    ALAT0 = 2.0
+    ALAT1 = 5.5
+    H0 = 0.9
+    Hdecay = 2.8
+
+    traits = []
+    for h in horses:
+        stats = h.get("stats", {})
+        heat_resist = 0.9 + 0.3 * rng.random()  # [0.9,1.2]
+        recover_rate = 0.85 + 0.25 * rng.random()  # [0.85,1.1]
+        luck = 0.8 + 0.4 * rng.random()  # [0.8,1.2]
+        tactic_roll = rng.random()
+        tactic = "front" if tactic_roll < 0.33 else "stalker" if tactic_roll < 0.66 else "closer"
+        traits.append(
+            {
+                "horse_id": h["id"],
+                "heat_resist": heat_resist,
+                "recover_rate": recover_rate,
+                "luck": luck,
+                "tactic": tactic,
+                "stats": stats,
+            }
+        )
+
+    states = []
+    for idx, (h, tr) in enumerate(zip(horses, traits)):
+        stats = tr["stats"]
+        F = condition_factor(stats.get("stability", HORSE_MIN_STAT))
+        states.append(
+            {
+                "idx": idx,
+                "horse_id": h["id"],
+                "pos": 0.0,
+                "v": 0.0,
+                "stats": stats,
+                "finished": False,
+                "finish_time": math.inf,
+                "condition": F,
+                "E": 1.0,
+                "H": 0.0,
+                "trait": tr,
+                "prev_event": None,
+            }
+        )
+
+    timeline = []
+    next_sample = 0.0
+    t = 0.0
+    events_flat = []
+
+    def push_event(kind: str, st, magnitude: float, note: str):
+        events_flat.append(
+            {
+                "t": round(t, 3),
+                "horse_id": st["horse_id"],
+                "kind": kind,
+                "mag": magnitude,
+                "note": note,
+            }
+        )
+
+    while t < HORSE_MAX_TICKS * HORSE_DT:
+        if all(st["finished"] for st in states):
+            break
+
+        wind = rng.normalvariate(0.0, wind_sigma)
+        wind_factor = max(0.2, 1 + wind)
+
+        # sort by position for slipstream/contact
+        ordered = sorted(states, key=lambda s: (-s["pos"], s["horse_id"]))
+        for rank, st in enumerate(ordered):
+            st["rank"] = rank + 1
+
+        for st in states:
+            if st["finished"]:
+                continue
+            total_frac = st["pos"] / finish_distance
+            lap_frac = (st["pos"] % HORSE_TRACK_LENGTH) / HORSE_TRACK_LENGTH
+            in_cor = in_corner(lap_frac)
+            slope = slope_at(lap_frac)
+
+            stats = st["stats"]
+            Sn = stats.get("speed", HORSE_MIN_STAT) / 100
+            An = stats.get("accel", HORSE_MIN_STAT) / 100
+            Tn = stats.get("stamina", HORSE_MIN_STAT) / 100
+            Cn = stats.get("cornering", HORSE_MIN_STAT) / 100
+            T_eff = eff_exp(Tn, K_T)
+            C_eff = eff_exp(Cn, K_C)
+            R_eff = eff_exp(stats.get("stability", HORSE_MIN_STAT) / 100, K_R)
+            trait = st["trait"]
+            heat_resist = trait["heat_resist"]
+            recover_rate = trait["recover_rate"]
+            luck = trait["luck"]
+
+            # Target speed (profiling only)
+            Vcap_base = V0 + V1 * math.sqrt(Sn)
+            if trait["tactic"] == "front":
+                target_v = Vcap_base * 0.90
+                if total_frac > 0.65:
+                    target_v *= 0.92
+            elif trait["tactic"] == "stalker":
+                target_v = Vcap_base * 0.85
+                if total_frac > 0.50:
+                    target_v *= 1.05
+            else:  # closer
+                target_v = Vcap_base * (0.75 + 0.15 * total_frac)
+
+            # Speed cap & saturation
+            Vcap = Vcap_base
+            eta = 1.8 + 1.2 * (1 - An)
+            sat = max(0.0, 1 - (st["v"] / max(Vcap, 1e-6)) ** eta)
+
+            # Power
+            Pmax = P0 + P1 * Sn
+            P = Pmax * st["condition"] * (0.35 + 0.65 * st["E"])
+            power_push = P * sat
+
+            # Drag
+            drag = (D0 * (st["v"] ** 2) + D1 * (st["v"] ** 3)) * wind_factor
+
+            # Slipstream
+            lead = next((s for s in ordered if s["pos"] > st["pos"] and (s["pos"] - st["pos"]) < 20), None)
+            if lead:
+                drag *= 0.9
+                st["H"] += 0.01
+                push_event("SLIP", st, 0.1, "슬립스트림")
+
+            # Slope
+            drag += 9.8 * slope * st["v"] / Vref
+
+            # Events (Poisson)
+            lambda_stumble = 0.003 * (1 + (1 - R_eff))
+            if st["prev_event"] == "STUMBLE":
+                lambda_stumble *= (1 + (1 - R_eff))
+            p_stumble = 1 - math.exp(-lambda_stumble * HORSE_DT)
+            if rng.random() < p_stumble:
+                mag = rng.uniform(0.08, 0.18)
+                power_push *= (1 - mag)
+                st["v"] *= (1 - 0.5 * mag)
+                st["prev_event"] = "STUMBLE"
+                push_event("STUMBLE", st, mag, "stumble")
+            else:
+                st["prev_event"] = None
+
+            p_boost = 1 - math.exp(-(0.0025 * luck) * HORSE_DT)
+            if rng.random() < p_boost:
+                mag = rng.uniform(0.04, 0.12)
+                power_push *= (1 + mag)
+                st["prev_event"] = "BOOST"
+                push_event("BOOST", st, mag, "boost")
+
+            if lead and (lead["pos"] - st["pos"]) < 6:
+                p_contact = 1 - math.exp(-0.02 * HORSE_DT)
+                if rng.random() < p_contact:
+                    hit = rng.uniform(0.05, 0.15)
+                    st["v"] *= (1 - hit)
+                    st["prev_event"] = "CONTACT"
+                    push_event("CONTACT", st, hit, "contact")
+
+            # Corner braking
+            kappa = KAPPA if in_cor else 0.0
+            a_lat_max = ALAT0 + ALAT1 * (C_eff ** 1.1)
+            a_lat_eff = a_lat_max / (1 + st["H"])
+            v_corner_max = math.sqrt(a_lat_eff / max(kappa, eps)) if kappa > 0 else float("inf")
+            corner_brake = Bc * (st["v"] - v_corner_max) ** 2 if st["v"] > v_corner_max else 0.0
+
+            # Corner miss penalty
+            if in_cor and v_corner_max < float("inf") and v_corner_max > 0:
+                excess = (st["v"] - v_corner_max) / v_corner_max
+                if excess > 0.25:
+                    st["H"] += 0.15 * excess
+                    st["v"] *= (1 - 0.08 * excess)
+                    push_event("CORNER_MISS", st, excess, "corner miss")
+
+            # Energy/heat drain
+            speed_load = 1 + SPD_K_SD * Sn
+            dE = (
+                e0 * speed_load * ((st["v"] / Vref) ** gamma)
+                + e1 * (1 if in_cor else 0) * ((st["v"] / Vref) ** gamma2) * (1 - 0.5 * T_eff)
+            ) * HORSE_DT
+            dH = (
+                H0
+                * (1 if in_cor else 0)
+                * ((st["v"] / Vref) ** 2)
+                * (1 - C_eff)
+                * (1 + HT_TWEAK * (1 - T_eff))
+                * HORSE_DT
+            )
+
+            # Overheat cap
+            heat_cap = max(0.6, 1.0 - 0.2 * heat_resist)
+            if st["H"] > heat_cap:
+                power_push *= 0.75
+                push_event("HEATCAP", st, st["H"], "heat cap")
+
+            # Overdrive
+            w_od = smoothstep(0.7, 0.9, total_frac)
+            h_ratio = st["H"] / (st["H"] + OD_H_HALF)
+            spurt_gate = max(0.35, min(1.0, 0.7 + 0.3 * st["E"] - 0.2 * h_ratio))
+            iod = (
+                w_od
+                * max(0.0, min(1.0, 0.35 + 0.65 * T_eff - 0.3 * (1 - R_eff)))
+                * smoothstep(0.12, 0.3, st["E"])
+                * (1 - math.exp(-ACC_K_A * An))
+                * spurt_gate
+            )
+            eta_eff = max(OD_ETA_MIN, eta * (1 - OD_PHI * iod))
+            sat_eff = max(0.0, 1 - (st["v"] / max(Vcap, 1e-6)) ** eta_eff)
+            # Preserve prior modifiers (events/heat cap) by scaling current push
+            if sat > 1e-6:
+                power_push *= (sat_eff / sat)
+            else:
+                power_push = P * sat_eff
+            power_push *= (1 + OD_ALPHA * iod)
+            dE += OD_LAMBDA * iod * (st["v"] / Vref) ** OD_RHO * HORSE_DT
+            dH *= (1 + OD_MU * iod)
+
+            # Recovery when slow
+            if st["v"] < target_v * 0.6:
+                dE *= 0.8 * recover_rate
+                dH *= 0.8 * recover_rate
+
+            st["E"] = min(1.0, max(0.0, st["E"] - dE))
+            st["H"] = max(0.0, st["H"] + dH - Hdecay * st["H"] * HORSE_DT * heat_resist)
+
+            # Acceleration
+            a_val = power_push - drag - corner_brake
+            st["v"] = max(0.0, st["v"] + a_val * HORSE_DT)
+            st["pos"] += st["v"] * HORSE_DT
+            if st["pos"] >= finish_distance:
+                st["pos"] = finish_distance
+                st["finished"] = True
+                st["finish_time"] = t
+
+        t += HORSE_DT
+        if t >= next_sample:
+            timeline.append(
+                {
+                    "t": round(t, 3),
+                    "positions": [s["pos"] for s in states],
+                    "speeds": [s["v"] for s in states],
+                    "energy": [s["E"] for s in states],
+                    "heat": [s["H"] for s in states],
+                }
+            )
+            next_sample += HORSE_TIMELINE_INTERVAL
+
+    # ensure all finish times are finite
+    for st in states:
+        if not math.isfinite(st["finish_time"]):
+            st["finish_time"] = t
+
+    winner_idx = min(range(len(states)), key=lambda i: (states[i]["finish_time"], states[i]["idx"]))
+    winner_id = states[winner_idx]["horse_id"]
+    finish_times = {s["horse_id"]: s["finish_time"] for s in states}
+
+    sim_detail = {
+        "timeline": timeline,
+        "finish_times": finish_times,
+        "laps": HORSE_LAPS,
+        "track_length": HORSE_TRACK_LENGTH,
+        "conditions": {s["horse_id"]: s["condition"] for s in states},
+    }
+
+    return winner_id, events_flat, profile, sim_detail
+
+
+def estimate_horse_win_probs(horses: List[dict], sims: int = 200, seed: int | None = None) -> List[float]:
+    rng = random.Random(seed)
+    wins = [0 for _ in horses]
+    for i in range(sims):
+        sim_seed = rng.getrandbits(32)
+        winner_id, _, _, _ = run_horse_race(horses, "oval", sim_seed)
+        for idx, h in enumerate(horses):
+            if h["id"] == winner_id:
+                wins[idx] += 1
+                break
+    return [w / sims for w in wins]
 
 
 def play_updown_logic(guesses: List[int], payouts: List[float] | None = None) -> tuple[str, float, dict]:

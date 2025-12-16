@@ -61,11 +61,14 @@
           </div>
         </div>
 
-        <div class="row g-4 mb-3" id="gameChooser">
-          <div class="col-md-4 game-col" data-game="updown">
-              <div class="card shadow-sm h-100 game-card" data-game="updown">
+        <div class="game-scroll mb-3" id="gameChooser">
+          <div class="game-col" data-game="updown">
+            <div class="card shadow-sm h-100 game-card" data-game="updown">
               <div class="card-body">
-                <h5 class="card-title fw-bold">UP&DOWN</h5>
+                <h5 class="card-title fw-bold">
+                  UP&DOWN　　
+                  <span class="d-block fw-bold">업다운</span>
+                </h5>
                 <div class="icon-badge">
                   <img src="/game_static/img/updown.svg" alt="UpDown Icon" />
                 </div>
@@ -74,10 +77,13 @@
               </div>
             </div>
           </div>
-          <div class="col-md-4 game-col" data-game="slot">
+          <div class="game-col" data-game="slot">
             <div class="card shadow-sm h-100 game-card" data-game="slot">
               <div class="card-body">
-                <h5 class="card-title fw-bold">SLOT MACHINE</h5>
+                <h5 class="card-title fw-bold">
+                  SLOT MACHINE　
+                  <span class="d-block fw-bold">슬롯머신</span>
+                </h5>
                 <div class="icon-badge">
                   <img src="/game_static/img/slot_777.svg" alt="Slot 777 Icon" />
                 </div>
@@ -86,10 +92,13 @@
               </div>
             </div>
           </div>
-          <div class="col-md-4 game-col" data-game="baccarat">
-              <div class="card shadow-sm h-100 game-card" data-game="baccarat">
+          <div class="game-col" data-game="baccarat">
+            <div class="card shadow-sm h-100 game-card" data-game="baccarat">
               <div class="card-body">
-                <h5 class="card-title fw-bold">BACCARAT</h5>
+                <h5 class="card-title fw-bold">
+                  BACCARAT　　
+                  <span class="d-block fw-bold">바카라</span>
+                </h5>
                 <div class="icon-badge">
                   <img src="/game_static/img/spc.svg" alt="Baccarat Icon" />
                 </div>
@@ -98,9 +107,39 @@
               </div>
             </div>
           </div>
+          <div class="game-col" data-game="horse">
+            <div class="card shadow-sm h-100 game-card" data-game="horse">
+              <div class="card-body">
+                <h5 class="card-title fw-bold">
+                  HORSE RACING
+                  <span class="d-block fw-bold">온라인 경마</span>
+                </h5>
+                <div class="icon-badge">
+                  <img src="/game_static/img/ho.svg" alt="Horse Racing Icon" />
+                </div>
+                <p class="text-muted mb-2">&nbsp;</p>
+                <button class="btn btn-outline-primary w-100 game-select" data-game="horse">선택</button>
+              </div>
+            </div>
+          </div>
+          <div class="game-col" data-game="dummy2">
+            <div class="card shadow-sm h-100 game-card" data-game="dummy2">
+              <div class="card-body">
+                <h5 class="card-title fw-bold">
+                  GAME GUIDE　
+                  <span class="d-block fw-bold">도움말</span>
+                </h5>
+                <div class="icon-badge">
+                  <img src="/game_static/img/qu.svg" alt="Help Guide Icon" />
+                </div>
+                <p class="text-muted mb-2">&nbsp;</p>
+                <button class="btn btn-outline-primary w-100 game-select" data-game="dummy2">선택</button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="card shadow text-dark d-none" id="betCard">
+        <div class="card shadow text-dark mt-3 d-none" id="betCard">
           <div class="card-body">
             <h5 class="card-title" id="selectedGameTitle">게임을 선택하세요</h5>
             <p class="text-muted small mb-3" id="selectedGameDetail"></p>
@@ -124,7 +163,7 @@
           </div>
         </div>
 
-        <div class="card shadow text-dark mt-4 d-none" id="playCard">
+        <div class="card shadow text-dark mt-3 d-none" id="playCard">
           <div class="card-body">
             <h5 class="card-title">플레이 화면</h5>
             <div id="gameBoard" class="game-board">
