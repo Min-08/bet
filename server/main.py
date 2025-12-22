@@ -2951,6 +2951,13 @@ def update_game_settings(
         setting.updated_at = datetime.utcnow()
         updated_items.append(setting)
     db.commit()
+    # 응답 직렬화를 위해 문자열로 저장된 bias_rules를 리스트로 변환
+    for s in updated_items:
+        if isinstance(s.bias_rules, str):
+            try:
+                s.bias_rules = json.loads(s.bias_rules)
+            except Exception:
+                s.bias_rules = []
     return updated_items
 
 
