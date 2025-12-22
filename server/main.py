@@ -1621,7 +1621,7 @@ def api_horse_history(limit: int = 100, db: Session = Depends(get_db)):
     )
     history = []
     for r in rows:
-        detail = r.detail if isinstance(r.detail, dict) else {}
+        detail = _parse_detail(r.detail)
         seed = detail.get("race_seed")
         winner_id = detail.get("winner_id")
         bet_choice = detail.get("bet_choice")
@@ -1892,6 +1892,20 @@ def api_horse_session_finish(
         "track_length": sim_detail.get("track_length", HORSE_TRACK_LENGTH),
         "laps": sim_detail.get("laps", HORSE_LAPS),
     }
+    db.add(
+        models.GameResult(
+            user_id=current_user.id,
+            session_key=payload.session_id,
+            game_id="horse",
+            bet_amount=bet,
+            bet_choice=chosen,
+            result=result,
+            payout_multiplier=payout_multiplier,
+            payout_amount=payout_amount,
+            detail=json.dumps(detail, ensure_ascii=False),
+            timestamp=datetime.utcnow(),
+        )
+    )
     log_game_event(
         db,
         current_user,
