@@ -11,6 +11,10 @@ const refreshLogsBtn = document.getElementById("refreshLogs");
 const gameLogList = document.getElementById("gameLogList");
 const gameLogStatus = document.getElementById("gameLogStatus");
 let gameLogTimer = null;
+const refreshActiveGamesBtn = document.getElementById("refreshActiveGames");
+const activeGameList = document.getElementById("activeGameList");
+const activeGameStatus = document.getElementById("activeGameStatus");
+let activeGameTimer = null;
 const ADMIN_SECRET_KEY = "adminSecretCache";
 
 const getStoredSecret = () => sessionStorage.getItem(ADMIN_SECRET_KEY) || "";
@@ -40,9 +44,17 @@ const renderUsers = (users) => {
       <tr>
         <td>${u.name}</td>
         <td>${u.pin || "----"}</td>
-        <td>${u.balance}</td>
+        <td>${u.balance ?? 0}</td>
+        <td>${u.seed_balance ?? 0}</td>
+        <td>${u.charge_balance ?? 0}</td>
+        <td>${u.exchange_balance ?? 0}</td>
         <td>
           <div class="input-group input-group-sm">
+            <select class="form-select form-select-sm balance-type" data-user-id="${u.id}">
+              <option value="charge" selected>충전</option>
+              <option value="seed">시드</option>
+              <option value="exchange">교환</option>
+            </select>
             <input type="number" class="form-control adjust-input" data-user-id="${u.id}" placeholder="±포인트" />
             <button class="btn btn-outline-primary adjust-btn" data-user-id="${u.id}">적용</button>
             <button class="btn btn-outline-danger delete-btn" data-user-id="${u.id}">삭제</button>
@@ -75,6 +87,29 @@ const fetchUsers = async () => {
   showAdminFeedback("계정 목록을 불러왔습니다.", "success");
 };
 
+const parseLogDetail = (raw) => {
+  if (!raw) return null;
+  if (typeof raw === "object") return raw;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    return null;
+  }
+};
+
+const buildLogLine = (log) => {
+  const action = log.action || "-";
+  if (log.game_id === "horse") {
+    const detail = parseLogDetail(log.detail);
+    const result = detail?.result;
+    if (result === "win") return `${action} / 승리`;
+    if (result === "lose") return `${action} / 패배`;
+    if (result) return `${action} / ${result}`;
+    return action;
+  }
+  return log.detail ? `${action} - ${log.detail}` : action;
+};
+
 const renderGameLogs = (logs) => {
   if (!gameLogList) return;
   if (!logs.length) {
@@ -87,11 +122,100 @@ const renderGameLogs = (logs) => {
         <div class="game-log-item">
           <div class="small text-muted">${log.created_at_kst}</div>
           <div><strong>${log.user_name || "알 수 없음"}</strong> / ${log.game_id || "-"}</div>
-          <div class="text-break">${log.action}${log.detail ? ` - ${log.detail}` : ""}</div>
+          <div class="text-break">${buildLogLine(log)}</div>
         </div>
       `
     )
     .join("");
+};
+
+const formatActiveTime = (ts) => {
+  if (!ts) return "-";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "-";
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+const formatActiveStatus = (status) => {
+  if (!status) return "진행중";
+  const normalized = String(status).toLowerCase();
+  if (normalized === "created") return "준비";
+  if (normalized === "running") return "진행중";
+  if (normalized === "pending") return "진행중";
+  if (normalized === "guessing") return "진행중";
+  if (normalized === "start") return "시작";
+  if (normalized === "play") return "진행";
+  if (normalized === "guess") return "진행";
+  if (normalized === "auto_play") return "진행";
+  if (normalized === "finish") return "완료";
+  if (normalized === "result") return "완료";
+  if (normalized === "recent") return "최근";
+  return status;
+};
+
+const renderActiveGames = (items) => {
+  if (!activeGameList) return;
+  if (!items.length) {
+    activeGameList.innerHTML = "<div class='text-muted small'>진행 중인 게임 없음</div>";
+    return;
+  }
+  activeGameList.innerHTML = items
+    .map((item) => {
+      const detail = item.detail || {};
+      const detailParts = [];
+      if (item.game_id === "horse") {
+        if (detail.result === "win") detailParts.push("승리");
+        else if (detail.result === "lose") detailParts.push("패배");
+        else if (detail.result) detailParts.push(detail.result);
+      } else {
+      if (item.bet_amount) detailParts.push(`베팅 ${item.bet_amount}`);
+      if (detail.bet_choice) detailParts.push(`선택 ${detail.bet_choice}`);
+      if (detail.selected_horse) detailParts.push(`말 ${detail.selected_horse}`);
+      if (Number.isFinite(detail.attempts) && Number.isFinite(detail.max_attempts)) {
+        detailParts.push(`시도 ${detail.attempts}/${detail.max_attempts}`);
+      }
+      }
+      const detailText = detailParts.length ? detailParts.join(" / ") : "-";
+      return `
+        <div class="game-log-item">
+          <div class="small text-muted">${formatActiveTime(item.started_at)}</div>
+          <div><strong>${item.user_name || "알 수 없음"}</strong> / ${item.game_name || item.game_id || "-"}</div>
+          <div class="text-break">상태: ${formatActiveStatus(item.status)} / ${detailText}</div>
+        </div>
+      `;
+    })
+    .join("");
+};
+
+const fetchActiveGames = async () => {
+  if (!activeGameList) return;
+  if (activeGameStatus) activeGameStatus.textContent = "불러오는 중...";
+  const res = await fetch("/api/admin/active_games", {
+    headers: getAdminHeader(),
+  });
+  if (res.status === 401) {
+    throw new Error("관리자 비밀번호가 올바르지 않습니다.");
+  }
+  if (!res.ok) throw new Error("실시간 현황을 불러오지 못했습니다.");
+  const data = await res.json();
+  renderActiveGames(data.active || []);
+  if (activeGameStatus) {
+    activeGameStatus.textContent = `진행 중 ${data.count || 0}건`;
+  }
+};
+
+const startActiveGamePolling = () => {
+  if (activeGameTimer) {
+    clearInterval(activeGameTimer);
+  }
+  fetchActiveGames().catch((e) => {
+    if (activeGameStatus) activeGameStatus.textContent = `오류: ${e.message}`;
+  });
+  activeGameTimer = setInterval(() => {
+    fetchActiveGames().catch((e) => {
+      if (activeGameStatus) activeGameStatus.textContent = `오류: ${e.message}`;
+    });
+  }, 5000);
 };
 
 const fetchGameLogs = async () => {
@@ -132,16 +256,20 @@ const bindAdjustButtons = () => {
       const input = document.querySelector(
         `.adjust-input[data-user-id='${userId}']`
       );
+      const typeSelect = document.querySelector(
+        `.balance-type[data-user-id='${userId}']`
+      );
       const delta = Number(input.value);
       if (!delta) {
         showAdminFeedback("금액을 입력하세요.", "danger");
         return;
       }
+      const balance_type = typeSelect ? typeSelect.value : "charge";
       try {
         const res = await fetch(`/api/admin/users/${userId}/adjust_balance`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...getAdminHeader() },
-          body: JSON.stringify({ delta, reason: "manual" }),
+          body: JSON.stringify({ delta, reason: "manual", balance_type }),
         });
         if (!res.ok) {
           const msg = await res.text();
@@ -257,6 +385,12 @@ if (refreshLogsBtn) {
   );
 }
 
+if (refreshActiveGamesBtn) {
+  refreshActiveGamesBtn.addEventListener("click", () =>
+    fetchActiveGames().catch((e) => showAdminFeedback(e.message, "danger"))
+  );
+}
+
 // 로그 패널 자동 갱신도 관리자 인증 후 시작됨
 
 const collectGameSettings = () => {
@@ -325,9 +459,10 @@ if (adminAuthBtn) {
       return;
     }
     setStoredSecret(secret);
-    Promise.all([fetchUsers(), fetchGameLogs()])
+    Promise.all([fetchUsers(), fetchGameLogs(), fetchActiveGames()])
       .then(() => {
         startGameLogPolling();
+        startActiveGamePolling();
         showAdminFeedback("인증 및 갱신 완료", "success");
       })
       .catch((e) => showAdminFeedback(e.message, "danger"));

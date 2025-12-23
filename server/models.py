@@ -53,6 +53,9 @@ class User(Base):
     name = Column(String, index=True, nullable=False)
     pin = Column(String, nullable=False)
     balance = Column(Integer, default=0, nullable=False)
+    seed_balance = Column(Integer, default=0, nullable=False)
+    charge_balance = Column(Integer, default=0, nullable=False)
+    exchange_balance = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -127,6 +130,8 @@ class GlobalSetting(Base):
     id = Column(Integer, primary_key=True, index=True)
     min_bet = Column(Integer, default=1, nullable=False)
     max_bet = Column(Integer, default=10000, nullable=False)
+    term_cycle_enabled = Column(Boolean, default=False, nullable=False)
+    neutral_bg_enabled = Column(Boolean, default=False, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 

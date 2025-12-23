@@ -4,6 +4,11 @@ body {
   position: relative;
 }
 
+body.theme-neutral {
+  background: radial-gradient(circle at top, #f4f4f5, #d4d4d8);
+  color: #1f2937;
+}
+
 .overlay {
   position: fixed;
   top: 0;
@@ -19,6 +24,20 @@ body {
   opacity: 0.4;
   z-index: 0;
   pointer-events: none;
+}
+
+body.theme-neutral .overlay {
+  background-image: radial-gradient(
+      rgba(0, 0, 0, 0.06) 2px,
+      transparent 2px
+    ),
+    radial-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+  opacity: 0.25;
+}
+
+body.theme-neutral .hero-title,
+body.theme-neutral .hero-subtitle {
+  color: #111827;
 }
 
 .container {

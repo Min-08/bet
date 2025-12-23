@@ -53,6 +53,9 @@ const authCard = document.getElementById("authCard");
 const appArea = document.getElementById("appArea");
 const userNameLabel = document.getElementById("userNameLabel");
 const balanceLabel = document.getElementById("balanceLabel");
+const balanceSeedLabel = document.getElementById("balanceSeed");
+const balanceChargeLabel = document.getElementById("balanceCharge");
+const balanceExchangeLabel = document.getElementById("balanceExchange");
 const logoutBtn = document.getElementById("logoutBtn");
 const refreshBalanceBtn = document.getElementById("refreshBalance");
 let gameSelectButtons = document.querySelectorAll(".game-select");
@@ -111,6 +114,21 @@ const getBaccaratChoice = () => {
 
 const setPlayTitle = (text) => {
   if (playCardTitle) playCardTitle.textContent = text;
+};
+
+const updateBalanceDisplay = (payload) => {
+  if (!payload) return;
+  const seed = Number.isFinite(payload.seed_balance) ? payload.seed_balance : null;
+  const charge = Number.isFinite(payload.charge_balance) ? payload.charge_balance : null;
+  const exchange = Number.isFinite(payload.exchange_balance) ? payload.exchange_balance : null;
+  let total = Number.isFinite(payload.balance) ? payload.balance : null;
+  if (total === null && seed !== null && charge !== null && exchange !== null) {
+    total = seed + charge + exchange;
+  }
+  if (balanceLabel && total !== null) balanceLabel.textContent = total;
+  if (balanceSeedLabel && seed !== null) balanceSeedLabel.textContent = seed;
+  if (balanceChargeLabel && charge !== null) balanceChargeLabel.textContent = charge;
+  if (balanceExchangeLabel && exchange !== null) balanceExchangeLabel.textContent = exchange;
 };
 
 const setUpdownContent = (html) => {
@@ -700,7 +718,7 @@ const startSlotFlow = async () => {
     }
     const data = await res.json();
     slotSessionId = data.detail?.session_id || null;
-    if (typeof data.balance === "number") balanceLabel.textContent = data.balance;
+    updateBalanceDisplay(data);
     updateGameLock();
     gameBoard.innerHTML = `
       ${slotControlsMarkup(bet)}
@@ -768,7 +786,7 @@ const startBaccaratFlow = async () => {
     }
     const data = await res.json();
     baccaratSessionId = data.detail?.session_id || null;
-    if (typeof data.balance === "number") balanceLabel.textContent = data.balance;
+    updateBalanceDisplay(data);
     updateGameLock();
     gameBoard.innerHTML = `
       ${baccaratControlsMarkup(bet, betChoice)}
@@ -873,7 +891,7 @@ const resolveHorseFlow = async () => {
       throw new Error(msg || "경마 시작에 실패했습니다.");
     }
     const data = await res.json();
-    if (typeof data.balance === "number") balanceLabel.textContent = data.balance;
+    updateBalanceDisplay(data);
 
     // Finish on server (authoritative)
     const finishRes = await fetch(API.horseFinish, {
@@ -886,7 +904,7 @@ const resolveHorseFlow = async () => {
       throw new Error(msg || "경마 결과 조회에 실패했습니다.");
     }
     const payload = await finishRes.json();
-    if (typeof payload.balance === "number") balanceLabel.textContent = payload.balance;
+    updateBalanceDisplay(payload);
 
     renderHorseResult(payload.detail || {}, payload);
     horseSessionId = null;
@@ -914,7 +932,7 @@ const updateMe = async () => {
   if (!res.ok) throw new Error("세션이 만료되었습니다.");
   const data = await res.json();
   userNameLabel.textContent = `${data.name} 님`;
-  balanceLabel.textContent = data.balance;
+  updateBalanceDisplay(data);
 };
 
 const requireLoginUI = async (showError = false) => {
@@ -1044,20 +1062,29 @@ const renderGuideContent = () => {
           <h6 class="fw-bold mb-2">BACCARAT</h6>
           <ul class="small mb-0 ps-3">
             <li>Player / Banker / Tie 중 선택</li>
-            <li>배당: Player 1:1(수령 2x), Banker 1:1-커미션(수령 1.95x), Tie 8:1</li>
+            <li>배당: Player 2x, Banker 1.95x, Tie 8x</li>
             <li>표준 드로우 규칙 적용, 네추럴 8/9 즉시 종료</li>
             <li>카드 공개 애니메이션으로 진행</li>
           </ul>
         </div>
       </div>
       <div class="row g-4 mt-1">
-        <div class="guide-col guide-col-full">
+        <div class="guide-col">
           <h6 class="fw-bold mb-2">HORSE RACING</h6>
           <ul class="small mb-0 ps-3">
-            <li>가상 경마 이벤트에 베팅(준비중)</li>
-            <li>말/조합 선택 후 결과에 따라 배당 지급</li>
-            <li>실제 배당·확률은 추후 안내 예정</li>
-            <li>출시 시 별도 규칙/배당표 제공</li>
+            <li>4개의 말 하나의 말을 선택하고 베팅</li>
+            <li>1등 말을 맞추면 3배 지급</li>
+            <li>말마다 랜덤 능력치 부여</li>
+            <li>경마 준비시 게임시작 판정입니다.</li>
+          </ul>
+        </div>
+        <div class="guide-col">
+          <h6 class="fw-bold mb-2">EXCHANGE</h6>
+          <ul class="small mb-0 ps-3">
+            <li>시드는 초기 포인트로써, 간식과 교환할 수 없습니다.</li>
+            <li>충전은 충전한 포인트로 게임 참여시 교환포인트로 계승됩니다.</li>
+            <li>교환은 간식과 교환 가능한 포인트입니다.</li>
+            <li>시드, 충전 포인트로 베팅 후 승리시 교환포인트로 계승됩니다.</li>
           </ul>
         </div>
       </div>
@@ -1130,6 +1157,8 @@ const renderHorseResult = (detail, payload) => {
   const speedValId = `${trackId}-speed-val`;
   const rankId = `${trackId}-rank`;
   const winnerId = detail.winner_id;
+  const pickedId = detail.bet_choice;
+  const finishTimes = detail.finish_times || {};
   const trackLenUnits = detail.track_length || 1000;
   const laps = detail.laps || 1;
   const finishDist = trackLenUnits * laps;
@@ -1147,7 +1176,7 @@ const renderHorseResult = (detail, payload) => {
         ${horses
           .map(
             (h) => `
-              <div class="horse-runner ${h.id === winnerId ? "winner" : ""}" data-horse="${h.id}">
+              <div class="horse-runner ${h.id === pickedId ? "picked-horse" : ""}" data-horse="${h.id}">
                 ${h.name}
               </div>
             `
@@ -1249,7 +1278,6 @@ const renderHorseResult = (detail, payload) => {
 
   const applyWinner = () => {
     if (winnerEl) winnerEl.textContent = `우승 말: ${horses.find((h) => h.id === winnerId)?.name || winnerId || "-"}`;
-    const pickedId = detail.bet_choice;
     if (tableBody) {
       tableBody.querySelectorAll("tr").forEach((row) => row.classList.remove("table-success", "table-warning"));
       const winRow = tableBody.querySelector(`tr[data-horse-row="${winnerId}"]`);
@@ -1259,7 +1287,6 @@ const renderHorseResult = (detail, payload) => {
     }
     runnersById.forEach((el, horseId) => {
       el.classList.remove("winner", "picked-horse");
-      if (horseId === winnerId) el.classList.add("winner");
       if (horseId === pickedId) el.classList.add("picked-horse");
     });
     if (card) card.classList.remove("d-none");
@@ -1277,9 +1304,24 @@ const renderHorseResult = (detail, payload) => {
     });
     if (rankEl) {
       const rank = horses
-        .map((h, idx) => [h, positions[idx] ?? 0])
-        .sort((a, b) => b[1] - a[1])
-        .map(([h]) => h.name)
+        .map((h, idx) => {
+          const pos = positions[idx] ?? 0;
+          const finished = pos >= finishDist - 1e-6;
+          const finishTime = Number.isFinite(finishTimes[h.id]) ? finishTimes[h.id] : null;
+          return { h, pos, finished, finishTime, idx };
+        })
+        .sort((a, b) => {
+          if (a.finished && b.finished) {
+            if (a.finishTime !== null && b.finishTime !== null && a.finishTime !== b.finishTime) {
+              return a.finishTime - b.finishTime;
+            }
+            return a.idx - b.idx;
+          }
+          if (a.finished !== b.finished) return a.finished ? -1 : 1;
+          if (a.pos !== b.pos) return b.pos - a.pos;
+          return a.idx - b.idx;
+        })
+        .map((item) => item.h.name)
         .join(" > ");
       rankEl.textContent = `현재 순위: ${rank}`;
     }
@@ -1446,13 +1488,13 @@ const renderSlot = (detail, payload) => {
       strip.style.transform = `translateY(${offset}px)`;
       if (current >= total) {
         finished += 1;
-        if (finished === 3) {
-          statusEl.textContent = `결과: ${payload.result} / 배당 x${payload.payout_multiplier.toFixed(2)}`;
-          resultEl.textContent = `증감: ${payload.delta} pt / 잔액: ${payload.balance} pt`;
-          if (typeof payload.balance === "number") balanceLabel.textContent = payload.balance;
-          slotAnimating = false;
-          selectionLocked = false;
-          updateGameLock();
+          if (finished === 3) {
+            statusEl.textContent = `결과: ${payload.result} / 배당 x${payload.payout_multiplier.toFixed(2)}`;
+            resultEl.textContent = `증감: ${payload.delta} pt / 잔액: ${payload.balance} pt`;
+          updateBalanceDisplay(payload);
+            slotAnimating = false;
+            selectionLocked = false;
+            updateGameLock();
           setGameMarqueePaused(false);
         }
         return;
@@ -1599,7 +1641,7 @@ const renderBaccarat = async (detail, payload) => {
 
     await sleep(800);
     statusEl.innerHTML = `최종: ${outcome} / Player ${playerValue} vs Banker ${bankerValue}<br>배당 x${payload.payout_multiplier.toFixed(2)} / 증감 ${payload.delta} pt / 잔액 ${payload.balance} pt`;
-    if (typeof payload.balance === "number") balanceLabel.textContent = payload.balance;
+    updateBalanceDisplay(payload);
     baccaratAnimating = false;
     selectionLocked = false;
     updateGameLock();
@@ -1644,7 +1686,7 @@ const playGame = async () => {
         throw new Error(msg || "게임 시작에 실패했습니다.");
       }
     const startData = await res.json();
-    if (typeof startData.balance === "number") balanceLabel.textContent = startData.balance;
+    updateBalanceDisplay(startData);
     const remainingText = typeof startData.remaining === "number" ? `${startData.remaining}회` : "계산 중...";
     updownInProgress = true;
     updateGameLock();
@@ -1680,7 +1722,7 @@ const playGame = async () => {
       throw new Error(msg || "게임 실행에 실패했습니다.");
     }
     const data = await res.json();
-    balanceLabel.textContent = data.balance;
+    updateBalanceDisplay(data);
     if (playCard) playCard.classList.remove("d-none");
     if (currentGame === "updown") renderUpdown(data.detail || {}, data);
     else if (currentGame === "slot") renderSlot(data.detail || {}, data);
@@ -1735,7 +1777,7 @@ const submitUpdownGuess = async () => {
     } else {
       updownInProgress = false;
       selectionLocked = false;
-      balanceLabel.textContent = data.balance;
+      updateBalanceDisplay(data);
       renderUpdown(data.detail || {}, data);
       updateGameLock();
       setGameMarqueePaused(false); // 게임 종료 시 다시 이동 허용

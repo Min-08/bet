@@ -233,10 +233,56 @@ def ensure_game_settings_columns() -> None:
                     id INTEGER PRIMARY KEY,
                     min_bet INTEGER NOT NULL DEFAULT 1,
                     max_bet INTEGER NOT NULL DEFAULT 10000,
+                    term_cycle_enabled INTEGER NOT NULL DEFAULT 0,
+                    neutral_bg_enabled INTEGER NOT NULL DEFAULT 0,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
+        else:
+            if "term_cycle_enabled" not in existing_cols_global:
+                conn.exec_driver_sql(
+                    "ALTER TABLE global_settings ADD COLUMN term_cycle_enabled INTEGER NOT NULL DEFAULT 0"
+                )
+            if "neutral_bg_enabled" not in existing_cols_global:
+                conn.exec_driver_sql(
+                    "ALTER TABLE global_settings ADD COLUMN neutral_bg_enabled INTEGER NOT NULL DEFAULT 0"
+                )
+
+
+def ensure_user_balance_columns() -> None:
+    with engine.begin() as conn:
+        existing_cols = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info('users')").fetchall()
+        }
+        added = False
+        if "seed_balance" not in existing_cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE users ADD COLUMN seed_balance INTEGER NOT NULL DEFAULT 0"
+            )
+            added = True
+        if "charge_balance" not in existing_cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE users ADD COLUMN charge_balance INTEGER NOT NULL DEFAULT 0"
+            )
+            added = True
+        if "exchange_balance" not in existing_cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE users ADD COLUMN exchange_balance INTEGER NOT NULL DEFAULT 0"
+            )
+            added = True
+        if added:
+            conn.exec_driver_sql(
+                """
+                UPDATE users
+                SET exchange_balance = balance
+                WHERE seed_balance = 0 AND charge_balance = 0 AND exchange_balance = 0
+                """
+            )
+        conn.exec_driver_sql(
+            "UPDATE users SET balance = seed_balance + charge_balance + exchange_balance"
+        )
 
 
 def ensure_default_game_settings(db: Session) -> None:
@@ -598,6 +644,28 @@ def require_admin(admin_secret: str | None = Header(None)):
         raise HTTPException(status_code=401, detail="Admin unauthorized")
 
 
+def get_total_balance(user: models.User) -> int:
+    return int(user.seed_balance + user.charge_balance + user.exchange_balance)
+
+
+def sync_total_balance(user: models.User) -> None:
+    user.balance = get_total_balance(user)
+
+
+def build_user_item(user: models.User, include_pin: bool = False) -> schemas.UserItem:
+    data = {
+        "id": user.id,
+        "name": user.name,
+        "balance": user.balance,
+        "seed_balance": user.seed_balance,
+        "charge_balance": user.charge_balance,
+        "exchange_balance": user.exchange_balance,
+    }
+    if include_pin:
+        data["pin"] = user.pin
+    return schemas.UserItem(**data)
+
+
 def get_global_limits(db: Session) -> tuple[int, int]:
     gs = db.query(models.GlobalSetting).filter(models.GlobalSetting.id == 1).first()
     if not gs:
@@ -643,6 +711,7 @@ app.mount(
 def startup() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_game_settings_columns()
+    ensure_user_balance_columns()
     with engine.begin() as conn:
         conn.exec_driver_sql(
             "INSERT OR IGNORE INTO global_settings (id, min_bet, max_bet) VALUES (1, 1, 10000)"
@@ -912,17 +981,13 @@ def api_login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
     token = sign_token(user.id)
     return schemas.LoginResponse(
         token=token,
-        user=schemas.UserItem(
-            id=user.id, name=user.name, balance=user.balance, pin=user.pin
-        ),
+        user=build_user_item(user, include_pin=True),
     )
 
 
 @app.get("/api/me", response_model=schemas.MeResponse)
 def api_me(current_user: models.User = Depends(get_current_user)):
-    return schemas.MeResponse(
-        id=current_user.id, name=current_user.name, balance=current_user.balance
-    )
+    return build_user_item(current_user)
 
 
 @app.post("/adjustments", response_model=schemas.AdjustmentResponse)
@@ -1023,11 +1088,14 @@ def admin_create_user(
         name=payload.name,
         pin=payload.pin,
         balance=payload.initial_balance,
+        seed_balance=payload.initial_balance,
+        charge_balance=0,
+        exchange_balance=0,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    return schemas.UserItem(id=user.id, name=user.name, balance=user.balance)
+    return build_user_item(user)
 
 
 @app.get("/api/admin/users", response_model=List[schemas.UserItem])
@@ -1041,7 +1109,7 @@ def admin_list_users(
         query = query.filter(models.User.name.contains(search))
     users = query.order_by(models.User.created_at.desc()).limit(200).all()
     return [
-        schemas.UserItem(id=u.id, name=u.name, balance=u.balance, pin=u.pin)
+        build_user_item(u, include_pin=True)
         for u in users
     ]
 
@@ -1056,23 +1124,99 @@ def admin_adjust_balance(
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    before = user.balance
-    user.balance += payload.delta
-    user.updated_at = datetime.utcnow()
-    db.add(
-        models.Transaction(
-            user_id=user.id,
-            type="charge" if payload.delta >= 0 else "deduct",
-            amount=payload.delta,
-            before_balance=before,
-            after_balance=user.balance,
-            description=payload.reason,
-        )
+    balance_type = payload.balance_type
+    delta_seed = payload.delta if balance_type == "seed" else 0
+    delta_charge = payload.delta if balance_type == "charge" else 0
+    delta_exchange = payload.delta if balance_type == "exchange" else 0
+    apply_balance_change(
+        db,
+        user,
+        description=payload.reason or "manual",
+        result_type="charge" if payload.delta >= 0 else "deduct",
+        delta_seed=delta_seed,
+        delta_charge=delta_charge,
+        delta_exchange=delta_exchange,
     )
-    db.add(user)
     db.commit()
     db.refresh(user)
-    return schemas.UserItem(id=user.id, name=user.name, balance=user.balance)
+    return build_user_item(user)
+
+
+def compute_bet_split(user: models.User, bet_amount: int) -> dict:
+    remaining = bet_amount
+    seed = min(user.seed_balance, remaining)
+    remaining -= seed
+    charge = min(user.charge_balance, remaining)
+    remaining -= charge
+    exchange = min(user.exchange_balance, remaining)
+    remaining -= exchange
+    if remaining > 0:
+        raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
+    return {"seed": int(seed), "charge": int(charge), "exchange": int(exchange)}
+
+
+def split_int_by_weights(total: int, weights: List[int]) -> List[int]:
+    if total <= 0 or sum(weights) <= 0:
+        return [0 for _ in weights]
+    weighted = [total * w / sum(weights) for w in weights]
+    floors = [int(math.floor(v)) for v in weighted]
+    remainder = total - sum(floors)
+    if remainder <= 0:
+        return floors
+    frac_pairs = sorted(
+        enumerate([v - f for v, f in zip(weighted, floors)]),
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    for idx, _ in frac_pairs[:remainder]:
+        floors[idx] += 1
+    return floors
+
+
+def compute_game_balance_deltas(
+    user: models.User,
+    bet_amount: int,
+    multiplier: float,
+    result: str,
+    bet_split: dict | None,
+    payout_amount_override: float | None,
+    charge_bet: bool,
+) -> tuple[int, int, int, float]:
+    if bet_split is None:
+        if not charge_bet:
+            raise HTTPException(status_code=400, detail="베팅 정보가 없습니다.")
+        bet_split = compute_bet_split(user, bet_amount)
+    delta_seed = -bet_split["seed"] if charge_bet else 0
+    delta_charge = -bet_split["charge"] if charge_bet else 0
+    delta_exchange = -bet_split["exchange"] if charge_bet else 0
+
+    payout_amount = payout_amount_override if payout_amount_override is not None else bet_amount * multiplier
+    if abs(multiplier - 1.5) < 1e-9 and payout_amount_override is None:
+        payout_amount = math.ceil(payout_amount)
+    payout_total_int = int(round(payout_amount))
+    is_win = payout_total_int > 0
+
+    if is_win and bet_amount > 0:
+        payout_seed, payout_charge, payout_exchange = split_int_by_weights(
+            payout_total_int,
+            [bet_split["seed"], bet_split["charge"], bet_split["exchange"]],
+        )
+        delta_seed += bet_split["seed"]
+        profit_seed = max(payout_seed - bet_split["seed"], 0)
+        if profit_seed:
+            delta_exchange += profit_seed
+        if payout_charge:
+            delta_exchange += payout_charge
+        if payout_exchange:
+            delta_exchange += payout_exchange
+    else:
+        if bet_split["charge"]:
+            remaining_charge = user.charge_balance + delta_charge
+            convert_amount = min(bet_split["charge"], max(0, remaining_charge))
+            if convert_amount:
+                delta_charge -= convert_amount
+                delta_exchange += convert_amount
+    return delta_seed, delta_charge, delta_exchange, payout_amount
 
 
 def process_game_result(
@@ -1086,21 +1230,27 @@ def process_game_result(
     bet_choice: str | None = None,
     payout_amount_override: float | None = None,
     charge_bet: bool = True,
+    bet_split: dict | None = None,
 ):
-    payout_amount = payout_amount_override if payout_amount_override is not None else bet_amount * multiplier
-    if abs(multiplier - 1.5) < 1e-9 and payout_amount_override is None:
-        payout_amount = math.ceil(payout_amount)
-    if charge_bet:
-        delta = int(round(payout_amount - bet_amount))
-    else:
-        delta = int(round(payout_amount))
+    delta_seed, delta_charge, delta_exchange, payout_amount = compute_game_balance_deltas(
+        user,
+        bet_amount,
+        multiplier,
+        result,
+        bet_split,
+        payout_amount_override,
+        charge_bet,
+    )
+    delta = delta_seed + delta_charge + delta_exchange
     apply_balance_change(
         db,
         user,
-        delta,
         description=f"game:{game_id}",
         game_type=game_id,
         result_type="game",
+        delta_seed=delta_seed,
+        delta_charge=delta_charge,
+        delta_exchange=delta_exchange,
     )
     db.add(
         models.GameResult(
@@ -1138,6 +1288,9 @@ def process_game_result(
         payout_amount=payout_amount,
         delta=delta,
         balance=user.balance,
+        seed_balance=user.seed_balance,
+        charge_balance=user.charge_balance,
+        exchange_balance=user.exchange_balance,
         detail=detail,
     )
 
@@ -1206,11 +1359,161 @@ def admin_game_logs(
     return items
 
 
+@app.get("/api/admin/active_games")
+def admin_active_games(
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    entries: List[Dict[str, object]] = []
+    user_ids: set[int] = set()
+    active_keys: set[tuple[int, str]] = set()
+
+    for user_id, state in UPDOWN_STATE.items():
+        entries.append(
+            {
+                "user_id": user_id,
+                "game_id": "updown",
+                "status": "guessing",
+                "bet_amount": state.get("bet_amount", 0),
+                "started_at": state.get("created_at"),
+                "detail": {
+                    "attempts": state.get("attempts", 0),
+                    "max_attempts": len(state.get("payouts") or []),
+                },
+            }
+        )
+        user_ids.add(user_id)
+        active_keys.add((int(user_id), "updown"))
+
+    for session_id, pending in SLOT_PENDING.items():
+        user_id = pending.get("user_id")
+        if user_id is None:
+            continue
+        entries.append(
+            {
+                "user_id": user_id,
+                "game_id": "slot",
+                "status": "pending",
+                "bet_amount": pending.get("bet_amount", 0),
+                "started_at": pending.get("created_at"),
+                "detail": {"session_id": session_id},
+            }
+        )
+        user_ids.add(int(user_id))
+        active_keys.add((int(user_id), "slot"))
+
+    for session_id, pending in BACCARAT_PENDING.items():
+        user_id = pending.get("user_id")
+        if user_id is None:
+            continue
+        entries.append(
+            {
+                "user_id": user_id,
+                "game_id": "baccarat",
+                "status": "pending",
+                "bet_amount": pending.get("bet_amount", 0),
+                "started_at": pending.get("created_at"),
+                "detail": {"session_id": session_id, "bet_choice": pending.get("bet_choice")},
+            }
+        )
+        user_ids.add(int(user_id))
+        active_keys.add((int(user_id), "baccarat"))
+
+    for session_id, sess in HORSE_SESSIONS.items():
+        status = sess.get("status")
+        if status not in ("CREATED", "RUNNING"):
+            continue
+        user_id = sess.get("user_id")
+        if user_id is None:
+            continue
+        entries.append(
+            {
+                "user_id": user_id,
+                "game_id": "horse",
+                "status": status.lower(),
+                "bet_amount": sess.get("bet_amount", 0),
+                "started_at": sess.get("created_at"),
+                "detail": {
+                    "session_id": session_id,
+                    "selected_horse": sess.get("selected_horse"),
+                },
+            }
+        )
+        user_ids.add(int(user_id))
+        active_keys.add((int(user_id), "horse"))
+
+    name_map: Dict[int, str] = {}
+    if user_ids:
+        users = db.query(models.User.id, models.User.name).filter(models.User.id.in_(user_ids)).all()
+        name_map = {row[0]: row[1] for row in users}
+
+    def _parse_detail(raw: str | None) -> dict:
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+
+    recent_entries: List[Dict[str, object]] = []
+    threshold = datetime.utcnow() - timedelta(seconds=30)
+    recent_logs = (
+        db.query(models.GameLog)
+        .filter(models.GameLog.created_at >= threshold, models.GameLog.game_id.isnot(None))
+        .order_by(models.GameLog.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    for log in recent_logs:
+        if log.user_id is None or not log.game_id:
+            continue
+        key = (int(log.user_id), str(log.game_id))
+        if key in active_keys:
+            continue
+        detail = _parse_detail(log.detail)
+        if log.game_id == "horse":
+            detail = {"result": detail.get("result")}
+        recent_entries.append(
+            {
+                "user_id": log.user_id,
+                "user_name": log.user_name,
+                "game_id": log.game_id,
+                "status": log.action or "recent",
+                "bet_amount": detail.get("bet_amount", 0),
+                "started_at": log.created_at,
+                "detail": detail,
+            }
+        )
+
+    entries.extend(recent_entries)
+
+    for entry in entries:
+        user_id = entry.get("user_id")
+        entry["user_name"] = entry.get("user_name") or name_map.get(
+            user_id, f"#{user_id}" if user_id is not None else "-"
+        )
+        entry["game_name"] = GAME_LABELS.get(str(entry.get("game_id")), entry.get("game_id"))
+
+    entries.sort(
+        key=lambda item: item.get("started_at") if isinstance(item.get("started_at"), datetime) else datetime.min,
+        reverse=True,
+    )
+    for entry in entries:
+        started_at = entry.get("started_at")
+        if isinstance(started_at, datetime):
+            entry["started_at"] = started_at.isoformat()
+        elif started_at is not None:
+            entry["started_at"] = str(started_at)
+
+    return {"active": entries, "count": len(entries), "server_time": datetime.utcnow().isoformat()}
+
+
 @app.post("/api/game/updown", response_model=schemas.GameResponse)
 def api_game_updown(
     payload: schemas.UpdownRequest, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    if current_user.balance < payload.bet_amount:
+    if get_total_balance(current_user) < payload.bet_amount:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
     setting = (
         db.query(models.GameSetting)
@@ -1271,7 +1574,7 @@ def api_game_updown_start(
 ):
     if bet_amount <= 0:
         raise HTTPException(status_code=400, detail="베팅 포인트가 필요합니다.")
-    if current_user.balance < bet_amount:
+    if get_total_balance(current_user) < bet_amount:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
     setting = (
         db.query(models.GameSetting)
@@ -1296,20 +1599,25 @@ def api_game_updown_start(
     ]
     payouts = normalize_payouts(payouts)
     target = random.randint(1, 100)
+    bet_split = compute_bet_split(current_user, bet_amount)
     UPDOWN_STATE[current_user.id] = {
         "target": target,
         "attempts": 0,
         "guesses": [],
         "bet_amount": bet_amount,
         "payouts": payouts,
+        "bet_split": bet_split,
+        "created_at": datetime.utcnow(),
     }
     apply_balance_change(
         db,
         current_user,
-        -bet_amount,
         description="game:updown:start",
         game_type="updown",
         result_type="game",
+        delta_seed=-bet_split["seed"],
+        delta_charge=-bet_split["charge"],
+        delta_exchange=-bet_split["exchange"],
     )
     log_game_event(
         db,
@@ -1320,7 +1628,14 @@ def api_game_updown_start(
     )
     db.commit()
     db.refresh(current_user)
-    return {"message": "게임 시작", "remaining": len(payouts), "balance": current_user.balance}
+    return {
+        "message": "게임 시작",
+        "remaining": len(payouts),
+        "balance": current_user.balance,
+        "seed_balance": current_user.seed_balance,
+        "charge_balance": current_user.charge_balance,
+        "exchange_balance": current_user.exchange_balance,
+    }
 
 
 @app.post("/api/game/updown/guess", response_model=schemas.GameResponse)
@@ -1375,6 +1690,7 @@ def api_game_updown_guess(
             adj_multiplier,
             detail,
             charge_bet=False,
+            bet_split=result_data.get("bet_split"),
         )
     return schemas.GameResponse(
         result="pending",
@@ -1382,6 +1698,9 @@ def api_game_updown_guess(
         payout_amount=0,
         delta=0,
         balance=current_user.balance,
+        seed_balance=current_user.seed_balance,
+        charge_balance=current_user.charge_balance,
+        exchange_balance=current_user.exchange_balance,
         detail=result_data["detail"],
     )
 
@@ -1390,7 +1709,7 @@ def api_game_updown_guess(
 def api_game_slot_start(
     payload: schemas.SlotRequest, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    if current_user.balance < payload.bet_amount:
+    if get_total_balance(current_user) < payload.bet_amount:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
     setting = (
         db.query(models.GameSetting)
@@ -1404,18 +1723,22 @@ def api_game_slot_start(
     # 진행 중 세션이 있으면 거부
     if any(p.get("user_id") == current_user.id for p in SLOT_PENDING.values()):
         raise HTTPException(status_code=400, detail="진행 중인 슬롯 게임이 있습니다.")
+    bet_split = compute_bet_split(current_user, payload.bet_amount)
     apply_balance_change(
         db,
         current_user,
-        -payload.bet_amount,
         description="game:slot:start",
         game_type="slot",
         result_type="game",
+        delta_seed=-bet_split["seed"],
+        delta_charge=-bet_split["charge"],
+        delta_exchange=-bet_split["exchange"],
     )
     session_id = str(uuid.uuid4())
     SLOT_PENDING[session_id] = {
         "user_id": current_user.id,
         "bet_amount": payload.bet_amount,
+        "bet_split": bet_split,
         "created_at": datetime.utcnow(),
     }
     log_game_event(
@@ -1434,6 +1757,9 @@ def api_game_slot_start(
         payout_amount=0.0,
         delta=-payload.bet_amount,
         balance=current_user.balance,
+        seed_balance=current_user.seed_balance,
+        charge_balance=current_user.charge_balance,
+        exchange_balance=current_user.exchange_balance,
         detail={"session_id": session_id, "anim": build_slot_anim(setting)},
     )
 
@@ -1450,6 +1776,7 @@ def api_game_slot_resolve(
     if pending["user_id"] != current_user.id:
         raise HTTPException(status_code=403, detail="본인의 게임만 완료할 수 있습니다.")
     bet_amount = pending["bet_amount"]
+    bet_split = pending.get("bet_split")
     setting = (
         db.query(models.GameSetting)
         .filter(models.GameSetting.game_id == "slot")
@@ -1458,7 +1785,14 @@ def api_game_slot_resolve(
     if setting is None:
         raise HTTPException(status_code=400, detail="설정이 없습니다.")
     try:
-        response = run_slot_round(db, current_user, setting, bet_amount, charge_bet=False)
+        response = run_slot_round(
+            db,
+            current_user,
+            setting,
+            bet_amount,
+            charge_bet=False,
+            bet_split=bet_split,
+        )
     finally:
         SLOT_PENDING.pop(payload.session_id, None)
     return response
@@ -1468,7 +1802,7 @@ def api_game_slot_resolve(
 def api_game_slot(
     payload: schemas.SlotRequest, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    if current_user.balance < payload.bet_amount:
+    if get_total_balance(current_user) < payload.bet_amount:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
     setting = (
         db.query(models.GameSetting)
@@ -1488,7 +1822,7 @@ def api_game_baccarat_start(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.balance < payload.bet_amount:
+    if get_total_balance(current_user) < payload.bet_amount:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
     setting = (
         db.query(models.GameSetting)
@@ -1509,19 +1843,23 @@ def api_game_baccarat_start(
     enforce_bet_limits(setting, gmin, gmax, payload.bet_amount)
     if any(p.get("user_id") == current_user.id for p in BACCARAT_PENDING.values()):
         raise HTTPException(status_code=400, detail="진행 중인 바카라 게임이 있습니다.")
+    bet_split = compute_bet_split(current_user, payload.bet_amount)
     apply_balance_change(
         db,
         current_user,
-        -payload.bet_amount,
         description="game:baccarat:start",
         game_type="baccarat",
         result_type="game",
+        delta_seed=-bet_split["seed"],
+        delta_charge=-bet_split["charge"],
+        delta_exchange=-bet_split["exchange"],
     )
     session_id = str(uuid.uuid4())
     BACCARAT_PENDING[session_id] = {
         "user_id": current_user.id,
         "bet_amount": payload.bet_amount,
         "bet_choice": payload.bet_choice,
+        "bet_split": bet_split,
         "created_at": datetime.utcnow(),
     }
     log_game_event(
@@ -1540,6 +1878,9 @@ def api_game_baccarat_start(
         payout_amount=0.0,
         delta=-payload.bet_amount,
         balance=current_user.balance,
+        seed_balance=current_user.seed_balance,
+        charge_balance=current_user.charge_balance,
+        exchange_balance=current_user.exchange_balance,
         detail={"session_id": session_id, "bet_choice": payload.bet_choice},
     )
 
@@ -1557,6 +1898,7 @@ def api_game_baccarat_resolve(
         raise HTTPException(status_code=403, detail="본인의 게임만 완료할 수 있습니다.")
     bet_amount = pending["bet_amount"]
     bet_choice = pending["bet_choice"]
+    bet_split = pending.get("bet_split")
     setting = (
         db.query(models.GameSetting)
         .filter(models.GameSetting.game_id == "baccarat")
@@ -1575,7 +1917,15 @@ def api_game_baccarat_resolve(
     gmin, gmax = get_global_limits(db)
     enforce_bet_limits(setting, gmin, gmax, bet_amount)
     try:
-        response = run_baccarat_round(db, current_user, setting_dict, bet_amount, bet_choice, charge_bet=False)
+        response = run_baccarat_round(
+            db,
+            current_user,
+            setting_dict,
+            bet_amount,
+            bet_choice,
+            charge_bet=False,
+            bet_split=bet_split,
+        )
     finally:
         BACCARAT_PENDING.pop(payload.session_id, None)
     return response
@@ -1587,7 +1937,7 @@ def api_game_baccarat(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.balance < payload.bet_amount:
+    if get_total_balance(current_user) < payload.bet_amount:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
     setting = (
         db.query(models.GameSetting)
@@ -1793,20 +2143,23 @@ def api_horse_session_lock(
         raise HTTPException(status_code=400, detail="세션 상태가 올바르지 않습니다.")
     if payload.bet_amount != sess.get("bet_amount"):
         raise HTTPException(status_code=400, detail="베팅 금액이 세션과 일치하지 않습니다.")
-    if current_user.balance < payload.bet_amount:
+    if get_total_balance(current_user) < payload.bet_amount:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
     horse_ids = {h["id"] for h in sess.get("horses", [])}
     if payload.horse_id not in horse_ids:
         raise HTTPException(status_code=400, detail="선택한 말이 유효하지 않습니다.")
 
     # 차감
+    bet_split = compute_bet_split(current_user, payload.bet_amount)
     apply_balance_change(
         db,
         current_user,
-        -payload.bet_amount,
         description="horse:lock",
         game_type="horse",
         result_type="game",
+        delta_seed=-bet_split["seed"],
+        delta_charge=-bet_split["charge"],
+        delta_exchange=-bet_split["exchange"],
     )
     db.commit()
     db.refresh(current_user)
@@ -1814,7 +2167,14 @@ def api_horse_session_lock(
     sess["status"] = "RUNNING"
     sess["selected_horse"] = payload.horse_id
     sess["last_heartbeat"] = datetime.utcnow()
-    return {"status": "ok", "balance": current_user.balance}
+    sess["bet_split"] = bet_split
+    return {
+        "status": "ok",
+        "balance": current_user.balance,
+        "seed_balance": current_user.seed_balance,
+        "charge_balance": current_user.charge_balance,
+        "exchange_balance": current_user.exchange_balance,
+    }
 
 
 @app.post("/api/horse/session/heartbeat")
@@ -1854,17 +2214,27 @@ def api_horse_session_finish(
     winner_id, events, profile, sim_detail = run_horse_race(horses, map_type, race_seed)
     result = "win" if chosen == winner_id else "lose"
     payout_multiplier = 3.0 if result == "win" else 0.0
-    payout_amount = bet * payout_multiplier
-
-    delta = payout_amount
-    if delta:
+    bet_split = sess.get("bet_split")
+    delta_seed, delta_charge, delta_exchange, payout_amount = compute_game_balance_deltas(
+        current_user,
+        bet,
+        payout_multiplier,
+        result,
+        bet_split,
+        None,
+        False,
+    )
+    delta = delta_seed + delta_charge + delta_exchange
+    if delta_seed or delta_charge or delta_exchange:
         apply_balance_change(
             db,
             current_user,
-            delta,
             description="horse:finish",
             game_type="horse",
             result_type="game",
+            delta_seed=delta_seed,
+            delta_charge=delta_charge,
+            delta_exchange=delta_exchange,
         )
 
     sess["status"] = "FINISHED"
@@ -1922,6 +2292,9 @@ def api_horse_session_finish(
         payout_amount=payout_amount,
         delta=delta,
         balance=current_user.balance,
+        seed_balance=current_user.seed_balance,
+        charge_balance=current_user.charge_balance,
+        exchange_balance=current_user.exchange_balance,
         detail=detail,
     )
 
@@ -1963,21 +2336,29 @@ def api_game_horse_resolve(
 def apply_balance_change(
     db: Session,
     user: models.User,
-    delta: int,
     description: str,
     game_type: str | None = None,
     result_type: str = "game",
+    delta_seed: int = 0,
+    delta_charge: int = 0,
+    delta_exchange: int = 0,
 ):
-    before = user.balance
-    user.balance += delta
+    before_total = get_total_balance(user)
+    user.seed_balance += delta_seed
+    user.charge_balance += delta_charge
+    user.exchange_balance += delta_exchange
+    if user.seed_balance < 0 or user.charge_balance < 0 or user.exchange_balance < 0:
+        raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
+    sync_total_balance(user)
     user.updated_at = datetime.utcnow()
+    delta_total = user.balance - before_total
     db.add(
         models.Transaction(
             user_id=user.id,
             type=result_type,
             game_type=game_type,
-            amount=delta,
-            before_balance=before,
+            amount=delta_total,
+            before_balance=before_total,
             after_balance=user.balance,
             description=description,
         )
@@ -2471,6 +2852,7 @@ def play_updown_guess(user_id: int, guess: int) -> tuple[dict, bool]:
         "multiplier": multiplier,
         "detail": detail,
         "bet_amount": state["bet_amount"],
+        "bet_split": state.get("bet_split"),
         "finished": finished,
     }, finished
 
@@ -2599,6 +2981,7 @@ def run_slot_round(
     setting: models.GameSetting,
     bet_amount: int,
     charge_bet: bool = True,
+    bet_split: dict | None = None,
 ) -> schemas.GameResponse:
     result, multiplier, detail, payout_override = play_slot_logic(setting, bet_amount, db)
     base_result = result
@@ -2646,6 +3029,7 @@ def run_slot_round(
         detail,
         payout_amount_override=payout_override,
         charge_bet=charge_bet,
+        bet_split=bet_split,
     )
 
 
@@ -2656,6 +3040,7 @@ def run_baccarat_round(
     bet_amount: int,
     bet_choice: str,
     charge_bet: bool = True,
+    bet_split: dict | None = None,
 ) -> schemas.GameResponse:
     base_result, multiplier, detail = play_baccarat_logic(bet_choice, setting_dict, None)
     setting_obj = (
@@ -2694,6 +3079,7 @@ def run_baccarat_round(
         detail,
         bet_choice=bet_choice,
         charge_bet=charge_bet,
+        bet_split=bet_split,
     )
 
 
@@ -2856,6 +3242,7 @@ def play_baccarat_logic(
 
     multiplier = 0.0
     result = "lose"
+    tie_side_multiplier = 0.5
     if bet_choice == "tie":
         if outcome == "tie":
             multiplier = payout_tie
@@ -2866,12 +3253,18 @@ def play_baccarat_logic(
         if outcome == "player":
             multiplier = payout_player
             result = "win"
+        elif outcome == "tie":
+            multiplier = tie_side_multiplier
+            result = "lose"
         else:
             result = "lose"
     else:  # banker bet
         if outcome == "banker":
             multiplier = payout_banker
             result = "win"
+        elif outcome == "tie":
+            multiplier = tie_side_multiplier
+            result = "lose"
         else:
             result = "lose"
 
@@ -2979,11 +3372,37 @@ def update_game_settings(
 def get_global_settings(db: Session = Depends(get_db), admin=Depends(require_admin)):
     gs = db.query(models.GlobalSetting).filter(models.GlobalSetting.id == 1).first()
     if not gs:
-        gs = models.GlobalSetting(id=1, min_bet=1, max_bet=10000)
+        gs = models.GlobalSetting(
+            id=1,
+            min_bet=1,
+            max_bet=10000,
+            term_cycle_enabled=False,
+            neutral_bg_enabled=False,
+        )
         db.add(gs)
         db.commit()
         db.refresh(gs)
     return gs
+
+
+@app.get("/api/public/global_settings", response_model=schemas.PublicGlobalSettingItem)
+def get_public_global_settings(db: Session = Depends(get_db)):
+    gs = db.query(models.GlobalSetting).filter(models.GlobalSetting.id == 1).first()
+    if not gs:
+        gs = models.GlobalSetting(
+            id=1,
+            min_bet=1,
+            max_bet=10000,
+            term_cycle_enabled=False,
+            neutral_bg_enabled=False,
+        )
+        db.add(gs)
+        db.commit()
+        db.refresh(gs)
+    return schemas.PublicGlobalSettingItem(
+        term_cycle_enabled=bool(gs.term_cycle_enabled),
+        neutral_bg_enabled=bool(gs.neutral_bg_enabled),
+    )
 
 
 @app.post("/global_settings", response_model=schemas.GlobalSettingItem)
@@ -2998,6 +3417,8 @@ def update_global_settings(
         db.add(gs)
     gs.min_bet = payload.min_bet
     gs.max_bet = payload.max_bet
+    gs.term_cycle_enabled = bool(payload.term_cycle_enabled)
+    gs.neutral_bg_enabled = bool(payload.neutral_bg_enabled)
     gs.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(gs)

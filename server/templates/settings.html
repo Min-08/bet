@@ -46,7 +46,7 @@
         </div>
       </section>
 
-      <section class="card shadow-sm mt-4">
+      <section class="card shadow-sm mt-4 d-none" id="settingsGuideCard">
         <div class="card-header">
           <h6 class="mb-0">도움말 · 설정 가이드 (요약)</h6>
         </div>
@@ -117,6 +117,20 @@
             <label class="form-label" for="globalMaxBet">모든 게임 최대 베팅 한도</label>
             <input type="number" id="globalMaxBet" class="form-control" value="10000" min="1" />
           </div>
+          <div class="col-md-3">
+            <label class="form-label">용어 순환</label>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="termCycleEnabled" />
+              <label class="form-check-label" for="termCycleEnabled">사용</label>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">배경색 변경</label>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="neutralBgEnabled" />
+              <label class="form-check-label" for="neutralBgEnabled">사용</label>
+            </div>
+          </div>
           <div class="col-md-12">
             <div id="globalSettingsFeedback" class="alert alert-info d-none mb-0" role="alert">
               비밀번호 인증 후 불러오세요.
@@ -150,6 +164,6 @@
       integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
       crossorigin="anonymous"
     ></script>
-    <script src="/admin_static/js/settings.js"></script>
+    <script src="/admin_static/js/settings.js?v=3"></script>
   </body>
 </html>

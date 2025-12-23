@@ -8,6 +8,9 @@ const saveGlobalSettingsBtn = document.getElementById("saveGlobalSettings");
 const globalMinBetInput = document.getElementById("globalMinBet");
 const globalMaxBetInput = document.getElementById("globalMaxBet");
 const globalSettingsFeedback = document.getElementById("globalSettingsFeedback");
+const termCycleToggle = document.getElementById("termCycleEnabled");
+const neutralBgToggle = document.getElementById("neutralBgEnabled");
+const settingsGuideCard = document.getElementById("settingsGuideCard");
 const ADMIN_SECRET_KEY = "adminSecretCache";
 
 const getStoredSecret = () => sessionStorage.getItem(ADMIN_SECRET_KEY) || "";
@@ -480,17 +483,22 @@ const fetchGlobalSettings = async () => {
   const data = await res.json();
   if (globalMinBetInput) globalMinBetInput.value = data.min_bet;
   if (globalMaxBetInput) globalMaxBetInput.value = data.max_bet;
+  if (termCycleToggle) termCycleToggle.checked = !!data.term_cycle_enabled;
+  if (neutralBgToggle) neutralBgToggle.checked = !!data.neutral_bg_enabled;
   if (globalSettingsFeedback) {
     globalSettingsFeedback.classList.remove("alert-info", "alert-danger");
     globalSettingsFeedback.classList.add("alert-success");
     globalSettingsFeedback.textContent = "전역 설정을 불러왔습니다.";
   }
   if (saveGlobalSettingsBtn) saveGlobalSettingsBtn.disabled = false;
+  if (settingsGuideCard) settingsGuideCard.classList.remove("d-none");
 };
 
 const saveGlobalSettings = async () => {
   const min_bet = Number(globalMinBetInput?.value || 1);
   const max_bet = Number(globalMaxBetInput?.value || 1);
+  const term_cycle_enabled = !!termCycleToggle?.checked;
+  const neutral_bg_enabled = !!neutralBgToggle?.checked;
   if (globalSettingsFeedback) {
     globalSettingsFeedback.classList.remove("d-none", "alert-danger", "alert-success");
     globalSettingsFeedback.classList.add("alert-info");
@@ -499,7 +507,7 @@ const saveGlobalSettings = async () => {
   const res = await fetch("/global_settings", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...getAdminHeader() },
-    body: JSON.stringify({ min_bet, max_bet }),
+    body: JSON.stringify({ min_bet, max_bet, term_cycle_enabled, neutral_bg_enabled }),
   });
   if (res.status === 401) throw new Error("관리자 비밀번호가 올바르지 않습니다.");
   if (!res.ok) throw new Error("전역 설정 저장 실패");
@@ -534,6 +542,7 @@ const fetchGameSettings = async () => {
     gameSettingsFeedback.textContent = "설정을 불러왔습니다.";
   }
   if (saveGameSettingsBtn) saveGameSettingsBtn.disabled = false;
+  if (settingsGuideCard) settingsGuideCard.classList.remove("d-none");
   showAdminFeedback("인증 및 불러오기 완료", "success");
 };
 

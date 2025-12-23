@@ -157,6 +157,15 @@ class GameSettingsUpdate(BaseModel):
 class GlobalSettingItem(BaseModel):
     min_bet: int
     max_bet: int
+    term_cycle_enabled: bool = False
+    neutral_bg_enabled: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PublicGlobalSettingItem(BaseModel):
+    term_cycle_enabled: bool = False
+    neutral_bg_enabled: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -186,6 +195,9 @@ class UserCreate(UserBase):
 class UserItem(UserBase):
     id: int
     balance: int
+    seed_balance: int
+    charge_balance: int
+    exchange_balance: int
     pin: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -204,6 +216,7 @@ class LoginResponse(BaseModel):
 class AdjustBalanceRequest(BaseModel):
     delta: int
     reason: Optional[str] = None
+    balance_type: Literal["seed", "charge", "exchange"] = "charge"
 
 
 class MeResponse(UserItem):
@@ -296,4 +309,7 @@ class GameResponse(BaseModel):
     payout_amount: float
     delta: float
     balance: float
+    seed_balance: Optional[float] = None
+    charge_balance: Optional[float] = None
+    exchange_balance: Optional[float] = None
     detail: Optional[dict] = None

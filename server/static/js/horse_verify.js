@@ -54,6 +54,7 @@
   const renderReplay = (detail) => {
     const horses = detail.horses || [];
     const timeline = detail.timeline || [];
+    const events = detail.events || [];
     const winnerId = detail.winner_id;
     const pickedId = detail.bet_choice;
     const trackLenUnits = detail.track_length || 1000;
@@ -62,11 +63,18 @@
 
     replayBoard.innerHTML = `
       <div class="horse-race-wrap">
-        <div class="small text-muted mb-2">시드 ${detail.race_seed || '-'} / 우승 ${winnerId || '-'} / 선택 ${pickedId || '-'}</div>
+        <div class="small text-white mb-2">시드 ${detail.race_seed || '-'} / 우승 ${winnerId || '-'} / 선택 ${pickedId || '-'}</div>
         <div class="horse-track mb-1" id="verify-track"></div>
+        <div class="mt-3">
+          <h6 class="fw-bold mb-2">실시간 로그</h6>
+          <div id="raceLog" class="small text-white" style="max-height: 180px; overflow-y: auto; background: #0b172a; border: 1px solid #1f2937; padding: 8px; border-radius: 6px;">
+            ${events.length ? "" : "로그 없음"}
+          </div>
+        </div>
       </div>
     `;
     const trackEl = document.getElementById('verify-track');
+    const logEl = document.getElementById('raceLog');
     if (!trackEl) return;
     const trackW = trackEl.clientWidth;
     const trackH = trackEl.clientHeight;
@@ -91,6 +99,37 @@
       trackEl.appendChild(div);
     });
     const runnersById = new Map(Array.from(trackEl.querySelectorAll('.horse-runner')).map((el) => [el.dataset.horse, el]));
+    const horseNameById = new Map(horses.map((h) => [h.id, h.name || h.id]));
+    const sortedEvents = events
+      .filter((ev) => ev.kind !== 'SLIP')
+      .map((ev) => ({ ...ev }))
+      .sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+    let nextEventIdx = 0;
+
+    const formatEventText = (ev) => {
+      const time = Number.isFinite(ev.t) ? ev.t.toFixed(2) : (ev.t ?? '-');
+      const horseName = horseNameById.get(ev.horse_id) || ev.horse_id || '-';
+      const note = ev.note || ev.kind || 'event';
+      const mag = Number.isFinite(ev.mag) ? ` (${ev.mag.toFixed(3)})` : '';
+      return `[${time}s] ${horseName} ${note}${mag}`;
+    };
+
+    const appendEventLog = (ev) => {
+      if (!logEl) return;
+      const line = document.createElement('div');
+      line.textContent = formatEventText(ev);
+      logEl.appendChild(line);
+    };
+
+    const flushEventLog = (simT) => {
+      if (!logEl || !sortedEvents.length) return;
+      const threshold = simT + 1e-6;
+      while (nextEventIdx < sortedEvents.length && (sortedEvents[nextEventIdx].t ?? 0) <= threshold) {
+        appendEventLog(sortedEvents[nextEventIdx]);
+        nextEventIdx += 1;
+      }
+      logEl.scrollTop = logEl.scrollHeight;
+    };
 
     const pointAt = (distRaw) => {
       let d = distRaw % totalLen;
@@ -122,6 +161,7 @@
 
     if (!timeline.length) {
       renderPositions(horses.map(() => finishDist));
+      flushEventLog(Number.POSITIVE_INFINITY);
       return;
     }
     const start = performance.now();
@@ -146,8 +186,10 @@
         return p + (n - p) * k;
       });
       renderPositions(interp);
+      flushEventLog(simT);
       if (simT >= lastT - 1e-3) {
         renderPositions(next.positions || interp);
+        flushEventLog(lastT + 1);
         return;
       }
       requestAnimationFrame(step);

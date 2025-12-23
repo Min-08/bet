@@ -67,7 +67,7 @@
               />
             </div>
             <div class="col-md-3">
-              <label class="form-label" for="initialBalance">초기 포인트</label>
+              <label class="form-label" for="initialBalance">초기 시드 포인트</label>
               <input type="number" id="initialBalance" value="0" class="form-control" />
             </div>
             <div class="col-md-2 d-grid">
@@ -96,12 +96,41 @@
               <tr>
                 <th>이름</th>
                 <th>PIN</th>
-                <th>잔액</th>
+                <th>총합</th>
+                <th>시드</th>
+                <th>충전</th>
+                <th>교환</th>
                 <th>조정</th>
               </tr>
             </thead>
             <tbody id="userTableBody"></tbody>
           </table>
+        </div>
+      </section>
+
+      <section class="card shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">실시간 게임 진행</h5>
+          <div class="d-flex gap-2 align-items-center">
+            <span id="activeGameStatus" class="text-muted small">대기 중...</span>
+            <button id="refreshActiveGames" class="btn btn-outline-secondary btn-sm">새로고침</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="activeGameList" class="game-log-list"></div>
+        </div>
+      </section>
+
+      <section class="card shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">누적 게임 로그</h5>
+          <div class="d-flex gap-2 align-items-center">
+            <span id="gameLogStatus" class="text-muted small">대기 중...</span>
+            <button id="refreshLogs" class="btn btn-outline-secondary btn-sm">새로고침</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="gameLogList" class="game-log-list"></div>
         </div>
       </section>
 
@@ -112,6 +141,6 @@
       integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
       crossorigin="anonymous"
     ></script>
-    <script src="/admin_static/js/admin.js"></script>
+    <script src="/admin_static/js/admin.js?v=2"></script>
   </body>
 </html>
