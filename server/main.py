@@ -2075,13 +2075,6 @@ def sweep_horse_sessions():
                 expired.append((sid, sess))
     return expired
 
-
-def ensure_no_active_horse_session(user_id: int):
-    for sess in HORSE_SESSIONS.values():
-        if sess.get("user_id") == user_id and sess.get("status") in ("CREATED", "RUNNING"):
-            raise HTTPException(status_code=400, detail="진행 중인 경마 세션이 있습니다.")
-
-
 def smoothstep(edge0: float, edge1: float, t: float) -> float:
     u = min(1.0, max(0.0, (t - edge0) / (edge1 - edge0)))
     return u * u * (3 - 2 * u)
@@ -2097,7 +2090,6 @@ def api_horse_session_create(
     current_user: models.User = Depends(get_current_user),
 ):
     sweep_horse_sessions()
-    ensure_no_active_horse_session(current_user.id)
     session_id = str(uuid.uuid4())
     seed = random.getrandbits(32)
     horses = generate_horse_pool(seed)
