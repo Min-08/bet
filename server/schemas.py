@@ -279,6 +279,7 @@ class HorseSessionForfeitRequest(BaseModel):
     session_id: str
 
 class UpdownGuessRequest(BaseModel):
+    session_id: str
     guess: int
 
 

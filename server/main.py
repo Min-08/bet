@@ -33,7 +33,7 @@ GAME_LABELS: Dict[str, str] = {
 }
 SECRET_KEY = os.environ.get("TOKEN_SECRET", "dev-secret")
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "adminpass")
-UPDOWN_STATE: Dict[int, dict] = {}
+UPDOWN_STATE: Dict[str, dict] = {}
 SLOT_PENDING: Dict[str, dict] = {}
 BACCARAT_PENDING: Dict[str, dict] = {}
 HORSE_PENDING: Dict[str, dict] = {}
@@ -1368,7 +1368,10 @@ def admin_active_games(
     user_ids: set[int] = set()
     active_keys: set[tuple[int, str]] = set()
 
-    for user_id, state in UPDOWN_STATE.items():
+    for session_id, state in UPDOWN_STATE.items():
+        user_id = state.get("user_id")
+        if user_id is None:
+            continue
         entries.append(
             {
                 "user_id": user_id,
@@ -1377,12 +1380,13 @@ def admin_active_games(
                 "bet_amount": state.get("bet_amount", 0),
                 "started_at": state.get("created_at"),
                 "detail": {
+                    "session_id": session_id,
                     "attempts": state.get("attempts", 0),
                     "max_attempts": len(state.get("payouts") or []),
                 },
             }
         )
-        user_ids.add(user_id)
+        user_ids.add(int(user_id))
         active_keys.add((int(user_id), "updown"))
 
     for session_id, pending in SLOT_PENDING.items():
@@ -1600,7 +1604,9 @@ def api_game_updown_start(
     payouts = normalize_payouts(payouts)
     target = random.randint(1, 100)
     bet_split = compute_bet_split(current_user, bet_amount)
-    UPDOWN_STATE[current_user.id] = {
+    session_id = str(uuid.uuid4())
+    UPDOWN_STATE[session_id] = {
+        "user_id": current_user.id,
         "target": target,
         "attempts": 0,
         "guesses": [],
@@ -1624,13 +1630,14 @@ def api_game_updown_start(
         current_user,
         "updown",
         "start",
-        {"bet_amount": bet_amount, "target": target},
+        {"bet_amount": bet_amount, "target": target, "session_id": session_id},
     )
     db.commit()
     db.refresh(current_user)
     return {
         "message": "게임 시작",
         "remaining": len(payouts),
+        "session_id": session_id,
         "balance": current_user.balance,
         "seed_balance": current_user.seed_balance,
         "charge_balance": current_user.charge_balance,
@@ -1644,7 +1651,7 @@ def api_game_updown_guess(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    result_data, finished = play_updown_guess(current_user.id, payload.guess)
+    result_data, finished = play_updown_guess(payload.session_id, current_user.id, payload.guess)
     detail = result_data["detail"]
     log_game_event(
         db,
@@ -1659,7 +1666,7 @@ def api_game_updown_guess(
         },
     )
     if finished:
-        UPDOWN_STATE.pop(current_user.id, None)
+        UPDOWN_STATE.pop(payload.session_id, None)
         # Apply bias for final outcome
         setting = (
             db.query(models.GameSetting)
@@ -1720,9 +1727,6 @@ def api_game_slot_start(
         raise HTTPException(status_code=400, detail="설정이 없습니다.")
     global_min, global_max = get_global_limits(db)
     enforce_bet_limits(setting, global_min, global_max, payload.bet_amount)
-    # 진행 중 세션이 있으면 거부
-    if any(p.get("user_id") == current_user.id for p in SLOT_PENDING.values()):
-        raise HTTPException(status_code=400, detail="진행 중인 슬롯 게임이 있습니다.")
     bet_split = compute_bet_split(current_user, payload.bet_amount)
     apply_balance_change(
         db,
@@ -1841,8 +1845,6 @@ def api_game_baccarat_start(
         raise HTTPException(status_code=400, detail="점검 중입니다.")
     gmin, gmax = get_global_limits(db)
     enforce_bet_limits(setting, gmin, gmax, payload.bet_amount)
-    if any(p.get("user_id") == current_user.id for p in BACCARAT_PENDING.values()):
-        raise HTTPException(status_code=400, detail="진행 중인 바카라 게임이 있습니다.")
     bet_split = compute_bet_split(current_user, payload.bet_amount)
     apply_balance_change(
         db,
@@ -2075,13 +2077,6 @@ def sweep_horse_sessions():
                 expired.append((sid, sess))
     return expired
 
-
-def ensure_no_active_horse_session(user_id: int):
-    for sess in HORSE_SESSIONS.values():
-        if sess.get("user_id") == user_id and sess.get("status") in ("CREATED", "RUNNING"):
-            raise HTTPException(status_code=400, detail="진행 중인 경마 세션이 있습니다.")
-
-
 def smoothstep(edge0: float, edge1: float, t: float) -> float:
     u = min(1.0, max(0.0, (t - edge0) / (edge1 - edge0)))
     return u * u * (3 - 2 * u)
@@ -2097,7 +2092,6 @@ def api_horse_session_create(
     current_user: models.User = Depends(get_current_user),
 ):
     sweep_horse_sessions()
-    ensure_no_active_horse_session(current_user.id)
     session_id = str(uuid.uuid4())
     seed = random.getrandbits(32)
     horses = generate_horse_pool(seed)
@@ -2800,10 +2794,12 @@ def align_updown_detail(detail: dict, result: str, last_guess: int | None = None
     return detail
 
 
-def play_updown_guess(user_id: int, guess: int) -> tuple[dict, bool]:
-    state = UPDOWN_STATE.get(user_id)
+def play_updown_guess(session_id: str, user_id: int, guess: int) -> tuple[dict, bool]:
+    state = UPDOWN_STATE.get(session_id)
     if not state:
         raise HTTPException(status_code=400, detail="게임을 시작해주세요.")
+    if state.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="본인의 게임만 진행할 수 있습니다.")
     target = state["target"]
     state["attempts"] += 1
     state["guesses"].append(guess)
